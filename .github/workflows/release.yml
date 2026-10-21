@@ -61,5 +61,5 @@ jobs:
           else
             gh release create "$GITHUB_REF_NAME" main.js manifest.json styles.css \
               --title "$GITHUB_REF_NAME" \
-              --notes "Install from Obsidian (Settings → Community plugins → Browse → p3n) once it's listed, or copy main.js, manifest.json and styles.css into <your vault>/.obsidian/plugins/ai-pen/ and enable p3n in Settings → Community plugins."
+              --notes "Install from Obsidian (Settings → Community plugins → Browse → p3n), or copy main.js, manifest.json and styles.css into <your vault>/.obsidian/plugins/ai-pen/ and enable p3n in Settings → Community plugins."
           fi

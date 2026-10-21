@@ -2,7 +2,7 @@
 
 Select text in a note. See if it reads as AI-written, or rewrite it in place.
 
-[p3n.si](https://p3n.si) · [Privacy](PRIVACY.md) · also for [Chrome and Firefox](https://github.com/Barabosik/p3n-chrome-extension), [Word and Excel](https://github.com/Barabosik/p3n-office-addin) and [Google Docs](https://github.com/Barabosik/p3n-google-docs-addon)
+[p3n.si](https://p3n.si) · [Community directory](https://community.obsidian.md/plugins/ai-pen) · [Privacy](PRIVACY.md) · also for [Chrome and Firefox](https://github.com/Barabosik/p3n-chrome-extension), [Word and Excel](https://github.com/Barabosik/p3n-office-addin) and [Google Docs](https://github.com/Barabosik/p3n-google-docs-addon)
 
 [![CI](https://github.com/Barabosik/p3n-obsidian/actions/workflows/ci.yml/badge.svg)](https://github.com/Barabosik/p3n-obsidian/actions/workflows/ci.yml)
 
@@ -39,7 +39,7 @@ Obsidian asks plugins to say this plainly, so here it is.
 
 ## Install
 
-From Obsidian, once the plugin is listed: **Settings → Community plugins → Browse**, search for **p3n**, then **Install** and **Enable**.
+From Obsidian: **Settings → Community plugins → Browse → p3n**, then **Install** and **Enable**. It's listed in the [Obsidian Community directory](https://community.obsidian.md/plugins/ai-pen).
 
 By hand: download `main.js`, `manifest.json` and `styles.css` from the [latest release](https://github.com/Barabosik/p3n-obsidian/releases/latest) into `<your vault>/.obsidian/plugins/ai-pen/`, then enable **p3n** in **Settings → Community plugins**.
 
