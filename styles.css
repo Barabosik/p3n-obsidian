@@ -1,0 +1,339 @@
+/* p3n for Obsidian. Colours, type and spacing come from Obsidian's theme variables, so light, dark and
+   community themes all apply. Tones: red reads as AI, orange is in between, green reads as human.
+   The view sits in a sidebar (--background-secondary), so its cards take the note's ground. */
+
+.p3n-view {
+	--p3n-card: var(--background-primary);
+	--p3n-ai: var(--color-red);
+	--p3n-mid: var(--color-orange);
+	--p3n-human: var(--color-green);
+	--p3n-ease: cubic-bezier(0.22, 1, 0.36, 1);
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-3);
+	padding: var(--size-4-3) var(--size-4-4);
+}
+
+.p3n-view p {
+	margin: 0;
+}
+
+.p3n-small {
+	font-size: var(--font-ui-small);
+}
+
+.p3n-muted {
+	color: var(--text-muted);
+}
+
+.p3n-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--size-4-2);
+}
+
+.p3n-push {
+	margin-inline-start: auto;
+}
+
+.p3n-view button.p3n-link {
+	background: none;
+	box-shadow: none;
+	border: none;
+	padding: 0;
+	height: auto;
+	color: var(--text-accent);
+	cursor: var(--cursor-link);
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}
+
+.p3n-view button.p3n-link:hover {
+	color: var(--text-accent-hover);
+}
+
+.p3n-button {
+	display: inline-flex;
+	align-items: center;
+	padding: var(--size-4-1) var(--size-4-3);
+	border-radius: var(--button-radius, var(--radius-s));
+	background-color: var(--interactive-normal);
+	color: var(--text-normal);
+	font-size: var(--font-ui-small);
+	text-decoration: none;
+}
+
+.p3n-button.mod-cta {
+	background-color: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+
+.p3n-button:hover {
+	text-decoration: none;
+}
+
+/* Notes: hints, errors and what happened after Replace. */
+.p3n-note {
+	padding: var(--size-4-2) var(--size-4-3);
+	border-radius: var(--radius-m);
+	background-color: var(--p3n-card);
+	border-inline-start: 3px solid var(--background-modifier-border);
+}
+
+.p3n-note.p3n-warn {
+	border-inline-start-color: var(--p3n-mid);
+}
+
+.p3n-note.p3n-ok {
+	border-inline-start-color: var(--p3n-human);
+}
+
+.p3n-note.p3n-error {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-2);
+	border-inline-start-color: var(--p3n-ai);
+}
+
+/* Busy: shows only after a beat, so an instant (cached) result doesn't flash it. */
+.p3n-busy {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-2);
+	animation: p3n-appear 200ms ease 150ms both;
+}
+
+.p3n-progress {
+	height: 4px;
+	border-radius: 2px;
+	background-color: var(--background-modifier-border);
+	overflow: hidden;
+}
+
+.p3n-progress i {
+	display: block;
+	height: 100%;
+	width: 40%;
+	border-radius: 2px;
+	background: linear-gradient(90deg, transparent, var(--interactive-accent) 70%);
+	animation: p3n-slide 1.4s ease-in-out infinite;
+}
+
+@keyframes p3n-slide {
+	from { transform: translateX(-100%); }
+	to { transform: translateX(250%); }
+}
+
+@keyframes p3n-appear {
+	from { opacity: 0; }
+}
+
+/* The result: parts arrive in reading order (--p3n-i is set in view.ts), the score runs, flagged sentences
+   get highlighted like a pen stroke, and a rewrite wipes in. */
+.p3n-result {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-3);
+}
+
+.p3n-result:empty {
+	display: none;
+}
+
+.p3n-result-in {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-3);
+}
+
+.p3n-result-in > * {
+	animation: p3n-rise 220ms var(--p3n-ease) both;
+	animation-delay: calc(min(var(--p3n-i, 0), 6) * 50ms);
+}
+
+@keyframes p3n-rise {
+	from { opacity: 0; transform: translateY(6px); }
+}
+
+.p3n-score {
+	display: flex;
+	align-items: flex-end;
+	justify-content: space-between;
+	gap: var(--size-4-3);
+}
+
+.p3n-view .p3n-label {
+	font-size: var(--font-ui-large);
+	font-weight: var(--font-bold);
+	line-height: 1.2;
+}
+
+.p3n-view .p3n-pct {
+	font-size: 2.25em;
+	font-weight: var(--font-bold);
+	line-height: 1;
+	text-align: end;
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+	transition: color 150ms ease;
+}
+
+.p3n-pct small {
+	display: block;
+	margin-top: var(--size-4-1);
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-normal);
+	color: var(--text-muted);
+}
+
+.p3n-pct .p3n-from {
+	font-size: 0.55em;
+	font-weight: var(--font-semibold);
+	color: var(--text-muted);
+}
+
+.p3n-sr {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+}
+
+.p3n-meter {
+	height: 6px;
+	border-radius: 3px;
+	background-color: var(--background-modifier-border);
+	overflow: hidden;
+}
+
+.p3n-meter i {
+	display: block;
+	height: 100%;
+	width: var(--p3n-w, 0%);
+	transform: scaleX(var(--p3n-scale, 1));
+	transform-origin: left;
+	transition: background-color 150ms ease;
+}
+
+.p3n-t-ai { color: var(--p3n-ai); }
+.p3n-t-mid { color: var(--p3n-mid); }
+.p3n-t-human { color: var(--p3n-human); }
+.p3n-b-ai { background-color: var(--p3n-ai); }
+.p3n-b-mid { background-color: var(--p3n-mid); }
+.p3n-b-human { background-color: var(--p3n-human); }
+
+.p3n-view h4 {
+	margin: 0 0 var(--size-4-1);
+	font-size: var(--font-ui-medium);
+	font-weight: var(--font-semibold);
+}
+
+.p3n-quotes {
+	list-style: none;
+	margin: var(--size-4-2) 0 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-2);
+}
+
+.p3n-quotes li {
+	padding: var(--size-4-2) var(--size-4-3);
+	border-radius: var(--radius-m);
+	background-color: var(--p3n-card);
+}
+
+.p3n-quotes li.p3n-clickable {
+	cursor: var(--cursor);
+}
+
+.p3n-quotes li.p3n-clickable:hover {
+	background-color: var(--background-modifier-hover);
+}
+
+.p3n-quotes li.p3n-clickable:focus-visible {
+	box-shadow: 0 0 0 2px var(--background-modifier-border-focus);
+	outline: none;
+}
+
+.p3n-quotes .p3n-why {
+	display: block;
+	margin-bottom: 2px;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+}
+
+.p3n-quotes q {
+	font-style: italic;
+	padding: 1px 0;
+}
+
+.p3n-quotes li.p3n-hit q {
+	background: linear-gradient(var(--text-highlight-bg), var(--text-highlight-bg)) no-repeat 0 0 / 0% 100%;
+	animation: p3n-sweep 600ms var(--p3n-ease) both;
+	animation-delay: calc(250ms + min(var(--p3n-j, 0), 4) * 140ms);
+}
+
+@keyframes p3n-sweep {
+	to { background-size: 100% 100%; }
+}
+
+.p3n-rewrite {
+	white-space: pre-wrap;
+	user-select: text;
+	padding: var(--size-4-3);
+	border-radius: var(--radius-m);
+	background-color: var(--p3n-card);
+	line-height: var(--line-height-normal);
+	mask: linear-gradient(180deg, #000 40%, transparent 60%) 0 100% / 100% 260% no-repeat;
+	animation: p3n-wipe 650ms var(--p3n-ease) 100ms both;
+}
+
+@keyframes p3n-wipe {
+	from { mask-position: 0 100%; }
+	to { mask-position: 0 0; }
+}
+
+.p3n-footer {
+	padding-top: var(--size-4-2);
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+.p3n-key-status:empty {
+	display: none;
+}
+
+.p3n-key-status {
+	margin-top: var(--size-4-2);
+}
+
+.p3n-key-status.p3n-ok { color: var(--text-success); }
+.p3n-key-status.p3n-warn { color: var(--p3n-mid, var(--color-orange)); }
+.p3n-key-status.p3n-error { color: var(--text-error); }
+
+@media (prefers-reduced-motion: reduce) {
+	.p3n-progress i {
+		animation: none;
+		width: 100%;
+		background: var(--interactive-accent);
+		opacity: 0.5;
+	}
+
+	.p3n-busy,
+	.p3n-result-in > * {
+		animation: p3n-appear 150ms ease both;
+	}
+
+	.p3n-rewrite {
+		mask: none;
+		animation: none;
+	}
+
+	.p3n-quotes li.p3n-hit q {
+		animation: none;
+		background-size: 100% 100%;
+	}
+}

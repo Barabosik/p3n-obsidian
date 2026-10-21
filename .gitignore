@@ -1,0 +1,16 @@
+# npm
+node_modules
+
+# Built by npm run build; attached to GitHub releases, not committed.
+main.js
+*.map
+
+# Obsidian: settings saved by a test install
+data.json
+
+# Local end-to-end runs (vault, Obsidian profile, screenshots)
+.e2e/
+
+.DS_Store
+.vscode
+.idea
