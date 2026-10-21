@@ -41,7 +41,7 @@ Obsidian asks plugins to say this plainly, so here it is.
 
 From Obsidian, once the plugin is listed: **Settings → Community plugins → Browse**, search for **p3n**, then **Install** and **Enable**.
 
-By hand: download `main.js`, `manifest.json` and `styles.css` from the [latest release](https://github.com/Barabosik/p3n-obsidian/releases/latest) into `<your vault>/.obsidian/plugins/p3n/`, then enable **p3n** in **Settings → Community plugins**.
+By hand: download `main.js`, `manifest.json` and `styles.css` from the [latest release](https://github.com/Barabosik/p3n-obsidian/releases/latest) into `<your vault>/.obsidian/plugins/ai-pen/`, then enable **p3n** in **Settings → Community plugins**.
 
 ![p3n on a phone](docs/mobile.png)
 

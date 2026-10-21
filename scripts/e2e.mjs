@@ -30,6 +30,8 @@ const AI_TEXT = "In today's fast-paced world, it's worth noting that effective c
 const SHORT = 'Ultimately, this seamless transition unlocks a rich tapestry of possibilities for teams of all sizes, empowering everyone to thrive in an ever-evolving landscape.';
 const NOTE = `${AI_TEXT}\n\n${SHORT}\n\nIntro line.\n`;
 const manifest = JSON.parse(readFileSync(path.join(ROOT, 'manifest.json'), 'utf8'));
+// The plugin's id, as Obsidian knows it: its folder, its commands (id:command), its settings tab.
+const ID = manifest.id;
 
 // ---- the vault and the profile --------------------------------------------------------------------
 
@@ -153,8 +155,9 @@ class Cdp {
 // ---- in-page helpers (stringified into the page) ---------------------------------------------------
 
 // The stand-in for api.p3n.si: canned runs (the browser extension's fixtures), queued odd answers, and a log.
-function installMock(fixtures) {
-	const p = window.app.plugins.plugins.p3n;
+function installMock(fixtures, id) {
+	window.__plugin = () => window.app.plugins.plugins[id];
+	const p = window.__plugin();
 	window.__p3n = { queue: [], requests: [], fixtures, real: window.__p3n?.real ?? p.client.transport };
 	p.client.transport = async (req) => {
 		const m = window.__p3n;
@@ -212,9 +215,9 @@ const clickButton = (label) => {
 // ---- the run ---------------------------------------------------------------------------------------
 
 // Runs a p3n command after clearing the last result, so waiting for a result waits for this one.
-async function run(cdp, id) {
+async function run(cdp, command) {
 	await cdp.ev(() => document.querySelector('.p3n-view .p3n-result')?.replaceChildren());
-	await cdp.ev((c) => window.app.commands.executeCommandById(c), id);
+	await cdp.ev((c) => window.app.commands.executeCommandById(c), `${ID}:${command}`);
 }
 
 const results = [];
@@ -283,10 +286,10 @@ async function main() {
 			}, manifest.id);
 			assert(ok, 'plugin did not load');
 		});
-		if (!LIVE) await cdp.ev(installMock, FIXTURES);
+		if (!LIVE) await cdp.ev(installMock, FIXTURES, ID);
 
 		await check('boot: commands named as in the palette, no default hotkeys', async () => {
-			const cmds = await cdp.ev(() => ['p3n:check', 'p3n:rewrite', 'p3n:open'].map((id) => { const c = window.app.commands.findCommand(id); return c && { name: c.name, hotkeys: c.hotkeys ?? [] }; }));
+			const cmds = await cdp.ev((id) => ['check', 'rewrite', 'open'].map((c) => window.app.commands.findCommand(`${id}:${c}`)).map((c) => c && { name: c.name, hotkeys: c.hotkeys ?? [] }), ID);
 			assert(cmds[0]?.name === 'p3n: Check for AI', `check is "${cmds[0]?.name}"`);
 			assert(cmds[1]?.name === 'p3n: Rewrite', `rewrite is "${cmds[1]?.name}"`);
 			assert(cmds[2]?.name === 'p3n: Open results', `open is "${cmds[2]?.name}"`);
@@ -296,21 +299,21 @@ async function main() {
 		if (LIVE) {
 			await check('live: Check for AI', async () => {
 				await cdp.ev(selectInNote, AI_TEXT);
-				await run(cdp, 'p3n:check');
+				await run(cdp, 'check');
 				await cdp.waitFor(idle, [], 120_000);
 				await cdp.waitFor(scoreSettled, [], 5000).catch(() => null);
 				const t = await cdp.ev(resultText);
-				console.log(`      ${t.split('\n').slice(0, 3).join(' | ')} | free left: ${await cdp.ev(() => window.app.plugins.plugins.p3n.free)}`);
+				console.log(`      ${t.split('\n').slice(0, 3).join(' | ')} | free left: ${await cdp.ev(() => window.__plugin().free)}`);
 				assert(/likely AI|AI class/.test(t), t.slice(0, 200));
 				await cdp.shot('live-check');
 			});
 			await check('live: Rewrite, then Replace selection', async () => {
 				await cdp.ev(selectInNote, SHORT);
-				await run(cdp, 'p3n:rewrite');
+				await run(cdp, 'rewrite');
 				await cdp.waitFor(idle, [], 180_000);
 				await cdp.waitFor(scoreSettled, [], 5000).catch(() => null);
 				const t = await cdp.ev(resultText);
-				console.log(`      ${t.split('\n').slice(0, 4).join(' | ')} | free left: ${await cdp.ev(() => window.app.plugins.plugins.p3n.free)}`);
+				console.log(`      ${t.split('\n').slice(0, 4).join(' | ')} | free left: ${await cdp.ev(() => window.__plugin().free)}`);
 				assert(await cdp.ev(() => !!document.querySelector('.p3n-view .p3n-rewrite')), t.slice(0, 200));
 				await cdp.shot('live-rewrite');
 				assert(await cdp.ev(clickButton, 'Replace selection'), 'no Replace selection');
@@ -324,7 +327,7 @@ async function main() {
 
 		await check('check: score, label, reason, sentences; X-P3N-Client, keyless', async () => {
 			assert(await cdp.ev(selectInNote, AI_TEXT), 'could not select');
-			await run(cdp, 'p3n:check');
+			await run(cdp, 'check');
 			await cdp.waitFor(idle);
 			await cdp.waitFor(scoreSettled, [], 5000);
 			const t = await cdp.ev(resultText);
@@ -351,7 +354,7 @@ async function main() {
 
 		await check('rewrite: headline, scores, rewrite without the trailing line break', async () => {
 			assert(await cdp.ev(selectInNote, SHORT), 'could not select');
-			await run(cdp, 'p3n:rewrite');
+			await run(cdp, 'rewrite');
 			await cdp.waitFor(idle);
 			await cdp.waitFor(scoreSettled, [], 5000).catch(async (e) => {
 				throw new Error(`${e.message.slice(0, 40)}: ${JSON.stringify(await cdp.ev(() => ({ num: document.querySelector('.p3n-view .p3n-num')?.textContent, sr: document.querySelector('.p3n-view .p3n-sr')?.textContent, busy: document.querySelector('.p3n-view .p3n-busy')?.style.display, hidden: document.hidden, vis: document.visibilityState, focus: document.hasFocus() })))}`);
@@ -391,7 +394,7 @@ async function main() {
 
 		await check('rewrite: refuses when the text changed since, and leaves the note alone', async () => {
 			await cdp.ev(selectInNote, SHORT);
-			await run(cdp, 'p3n:rewrite');
+			await run(cdp, 'rewrite');
 			await cdp.waitFor(idle);
 			const edited = await cdp.ev(() => {
 				const ed = window.__ed();
@@ -409,7 +412,7 @@ async function main() {
 		await check('rewrite: finds the text after edits above it', async () => {
 			assert(await cdp.ev(noteText) === NOTE, 'note not reset');
 			await cdp.ev(selectInNote, SHORT);
-			await run(cdp, 'p3n:rewrite');
+			await run(cdp, 'rewrite');
 			await cdp.waitFor(idle);
 			await cdp.ev(() => window.__ed().replaceRange('A new first line.\n', { line: 0, ch: 0 }));
 			await cdp.ev(clickButton, 'Replace selection');
@@ -423,7 +426,7 @@ async function main() {
 				ed.setValue(note);
 			}, NOTE);
 			await cdp.ev(selectInNote, SHORT);
-			await run(cdp, 'p3n:rewrite');
+			await run(cdp, 'rewrite');
 			await cdp.waitFor(idle);
 			await cdp.ev(() => window.app.workspace.getLeavesOfType('markdown').forEach((l) => l.detach()));
 			await cdp.ev(clickButton, 'Replace selection');
@@ -435,18 +438,18 @@ async function main() {
 		await check('select: nothing selected, several selections, too short: no call', async () => {
 			const before = await cdp.ev(() => window.__p3n.requests.length);
 			await cdp.ev(selectInNote, null);
-			await run(cdp, 'p3n:check');
+			await run(cdp, 'check');
 			let hint = await cdp.waitFor(() => { const h = document.querySelector('.p3n-view .p3n-note.p3n-warn.p3n-small'); return h && h.style.display !== 'none' && h.innerText; });
 			assert(hint === 'Nothing is selected in the note. Select some text first.', hint);
 			await cdp.ev(() => {
 				const ed = window.__ed();
 				ed.setSelections([{ anchor: { line: 2, ch: 0 }, head: { line: 2, ch: 10 } }, { anchor: { line: 4, ch: 0 }, head: { line: 4, ch: 10 } }]);
 			});
-			await run(cdp, 'p3n:check');
+			await run(cdp, 'check');
 			hint = await cdp.ev(() => document.querySelector('.p3n-view > .p3n-note.p3n-warn')?.innerText);
 			assert(hint === 'p3n works on one selection at a time. Select one passage.', hint);
 			await cdp.ev(selectInNote, 'Intro line.');
-			await run(cdp, 'p3n:check');
+			await run(cdp, 'check');
 			const t = await cdp.waitFor(() => document.querySelector('.p3n-view .p3n-error')?.innerText);
 			assert(t === 'Check needs at least 40 characters, a sentence or two. Select more.', t);
 			assert(await cdp.ev(() => window.__p3n.requests.length) === before, 'a call was sent');
@@ -455,7 +458,7 @@ async function main() {
 		await check('errors: free limit, with Sign up to p3n.si only and Add an API key', async () => {
 			await cdp.ev(() => window.__p3n.queue.push({ status: 429, body: { error: { type: 'free_limit', message: 'Free calls are used up.', signup_url: 'javascript:alert(1)', retry_after_seconds: 600 } } }));
 			await cdp.ev(selectInNote, AI_TEXT);
-			await run(cdp, 'p3n:check');
+			await run(cdp, 'check');
 			await cdp.waitFor(idle);
 			const t = await cdp.ev(resultText);
 			assert(t.includes('The free checks for this hour are used up; more in about 10 min.'), t);
@@ -465,14 +468,14 @@ async function main() {
 		});
 
 		const ODD = [
-			['504 too_long', 'p3n:rewrite', { status: 504, body: { error: { type: 'too_long', message: 'The text took longer than 85 s to process; send a shorter text. Not charged.' } } }, /send a shorter text/],
-			['an HTML error page', 'p3n:check', { status: 502, html: '<!doctype html><title>502</title>Bad gateway' }, /p3n answered 502\./],
-			['a failed run', 'p3n:rewrite', { status: 200, body: { ...FIXTURES.humanize, status: 'failed', output: null, error: 'The model provider failed. You were not charged.' } }, /provider failed/],
-			['detect without a score', 'p3n:check', { status: 200, body: { ...FIXTURES.detect, output: { version: 'detect-v9' } } }, /without a result/],
-			['humanize without a rewrite', 'p3n:rewrite', { status: 200, body: { ...FIXTURES.humanize, output: { version: 'humanize-v9', ai_after: 0.1 } } }, /without a result/],
-			['a revoked key', 'p3n:check', { status: 401, body: { error: { type: 'unauthorized', message: 'Invalid API key.' } } }, /didn't accept your API key/],
-			['low balance', 'p3n:rewrite', { status: 402, body: { error: { type: 'insufficient_credit', message: 'x' } } }, /balance is too low/],
-			['no connection', 'p3n:check', { drop: true }, /Can't reach p3n/],
+			['504 too_long', 'rewrite', { status: 504, body: { error: { type: 'too_long', message: 'The text took longer than 85 s to process; send a shorter text. Not charged.' } } }, /send a shorter text/],
+			['an HTML error page', 'check', { status: 502, html: '<!doctype html><title>502</title>Bad gateway' }, /p3n answered 502\./],
+			['a failed run', 'rewrite', { status: 200, body: { ...FIXTURES.humanize, status: 'failed', output: null, error: 'The model provider failed. You were not charged.' } }, /provider failed/],
+			['detect without a score', 'check', { status: 200, body: { ...FIXTURES.detect, output: { version: 'detect-v9' } } }, /without a result/],
+			['humanize without a rewrite', 'rewrite', { status: 200, body: { ...FIXTURES.humanize, output: { version: 'humanize-v9', ai_after: 0.1 } } }, /without a result/],
+			['a revoked key', 'check', { status: 401, body: { error: { type: 'unauthorized', message: 'Invalid API key.' } } }, /didn't accept your API key/],
+			['low balance', 'rewrite', { status: 402, body: { error: { type: 'insufficient_credit', message: 'x' } } }, /balance is too low/],
+			['no connection', 'check', { drop: true }, /Can't reach p3n/],
 		];
 		for (const [name, cmd, next, want] of ODD) {
 			await check(`errors: ${name}`, async () => {
@@ -488,7 +491,7 @@ async function main() {
 		await check('errors: a long run is polled; Cancel stops waiting', async () => {
 			await cdp.ev(() => window.__p3n.queue.push({ status: 202, body: { id: 'long', skill: 'humanize', status: 'queued' } }, { status: 200, body: { id: 'long', skill: 'humanize', status: 'running' } }, { status: 200, body: { id: 'long', skill: 'humanize', status: 'running' } }));
 			await cdp.ev(selectInNote, SHORT);
-			await run(cdp, 'p3n:rewrite');
+			await run(cdp, 'rewrite');
 			await cdp.waitFor(() => /Rewriting… \d+ s/.test(document.querySelector('.p3n-view .p3n-busy')?.innerText ?? ''));
 			// The first poll comes 2 s after the 202 (later in a hidden window, whose timers are throttled).
 			await cdp.waitFor(() => window.__p3n.requests.some((r) => r.url.endsWith('/v1/runs/long')), [], 20_000);
@@ -532,7 +535,7 @@ async function main() {
 
 		await check('key: a key from secret storage is sent; balance shown; a wrong one is named', async () => {
 			await cdp.ev(async () => {
-				const p = window.app.plugins.plugins.p3n;
+				const p = window.__plugin();
 				window.app.secretStorage.setSecret('p3n-e2e', 'p3n_e2e_not_a_real_key');
 				p.settings.keySecret = 'p3n-e2e';
 				await p.saveSettings();
@@ -540,20 +543,20 @@ async function main() {
 			let foot = await cdp.waitFor(() => { const t = document.querySelector('.p3n-view .p3n-footer')?.innerText ?? ''; return t.includes('accepted') && t; });
 			assert(foot.includes("Your API key wasn't accepted. Change it under API key."), foot);
 			await cdp.ev(() => window.__p3n.queue.push({ status: 200, body: { email: 'test@example.com', balance_usd: '1.5', key: { name: 'laptop', prefix: 'p3n_e2e' } } }));
-			await cdp.ev(() => window.app.plugins.plugins.p3n.refreshViews());
+			await cdp.ev(() => window.__plugin().refreshViews());
 			foot = await cdp.waitFor(() => { const t = document.querySelector('.p3n-view .p3n-footer')?.innerText ?? ''; return t.includes('Balance') && t; });
 			assert(foot.includes('Balance $1.50 · key laptop'), foot);
 			await cdp.ev(selectInNote, AI_TEXT);
-			await run(cdp, 'p3n:check');
+			await run(cdp, 'check');
 			await cdp.waitFor(idle);
 			const req = await cdp.ev(() => window.__p3n.requests.filter((r) => r.url.endsWith('/v1/detect')).at(-1));
 			assert(req.headers.Authorization === 'Bearer p3n_e2e_not_a_real_key', JSON.stringify(req.headers));
 		});
 
 		await check('settings: the tab, its key row and privacy text', async () => {
-			await cdp.ev(() => { window.app.setting.open(); window.app.setting.openTabById('p3n'); });
+			await cdp.ev((id) => { window.app.setting.open(); window.app.setting.openTabById(id); }, ID);
 			// The tab's own element: the settings window's layout differs between Obsidian versions.
-			const t = await cdp.waitFor(() => { const c = window.app.setting.activeTab?.containerEl; return window.app.setting.activeTab?.id === 'p3n' && c?.innerText.includes('What p3n sends') && c.innerText; });
+			const t = await cdp.waitFor((id) => { const c = window.app.setting.activeTab?.containerEl; return window.app.setting.activeTab?.id === id && c?.innerText.includes('What p3n sends') && c.innerText; }, [ID]);
 			for (const want of ['API key', '10 calls an hour', "keychain on this device, not in your notes or the plugin's data.json", 'Privacy', 'What p3n sends', 'It goes to api.p3n.si and nowhere else.']) assert(t.includes(want), `missing "${want}"`);
 			const status = await cdp.waitFor(() => window.app.setting.activeTab.containerEl.querySelector('.p3n-key-status')?.innerText);
 			assert(/doesn't accept this key|Checking/.test(status), status);
@@ -561,26 +564,26 @@ async function main() {
 			await cdp.ev(() => [...window.app.setting.activeTab.containerEl.querySelectorAll('button')].find((b) => b.textContent === 'Remove key').click());
 			const after = await cdp.waitFor(() => window.app.setting.activeTab.containerEl.querySelector('.p3n-key-status')?.innerText.startsWith('Key removed') && window.app.setting.activeTab.containerEl.querySelector('.p3n-key-status').innerText);
 			assert(after.startsWith('Key removed. p3n still works without one'), after);
-			assert(await cdp.ev(() => window.app.plugins.plugins.p3n.settings.keySecret) === '', 'key name still saved');
-			const saved = JSON.parse(readFileSync(path.join(VAULT, '.obsidian', 'plugins', 'p3n', 'data.json'), 'utf8'));
+			assert(await cdp.ev(() => window.__plugin().settings.keySecret) === '', 'key name still saved');
+			const saved = JSON.parse(readFileSync(path.join(VAULT, '.obsidian', 'plugins', ID, 'data.json'), 'utf8'));
 			assert(JSON.stringify(saved) === '{"keySecret":""}', `data.json: ${JSON.stringify(saved)}`);
 			await cdp.ev(() => window.app.setting.close());
 		});
 
 		await check('key: the data.json never holds the key itself', async () => {
-			const raw = readFileSync(path.join(VAULT, '.obsidian', 'plugins', 'p3n', 'data.json'), 'utf8');
+			const raw = readFileSync(path.join(VAULT, '.obsidian', 'plugins', ID, 'data.json'), 'utf8');
 			assert(!raw.includes('p3n_e2e'), raw);
 		});
 
 		await check('theme: dark', async () => {
 			await cdp.ev(() => window.app.changeTheme('obsidian'));
 			await cdp.ev(selectInNote, SHORT);
-			await run(cdp, 'p3n:rewrite');
+			await run(cdp, 'rewrite');
 			await cdp.waitFor(idle);
 			assert(await cdp.ev(() => document.body.classList.contains('theme-dark')), 'not dark');
 			await cdp.shot('rewrite-dark');
 			await cdp.ev(selectInNote, AI_TEXT);
-			await run(cdp, 'p3n:check');
+			await run(cdp, 'check');
 			await cdp.waitFor(idle);
 			await cdp.shot('check-dark');
 			await cdp.ev(() => window.app.changeTheme('moonstone'));
@@ -589,13 +592,13 @@ async function main() {
 		});
 
 		await check('unload: disabling and enabling again leaves no errors and keeps the view', async () => {
-			await cdp.ev(async () => {
-				await window.app.plugins.disablePlugin('p3n');
-				await window.app.plugins.enablePlugin('p3n');
-			});
-			await cdp.ev(installMock, FIXTURES);
+			await cdp.ev(async (id) => {
+				await window.app.plugins.disablePlugin(id);
+				await window.app.plugins.enablePlugin(id);
+			}, ID);
+			await cdp.ev(installMock, FIXTURES, ID);
 			await cdp.ev(selectInNote, AI_TEXT);
-			await run(cdp, 'p3n:check');
+			await run(cdp, 'check');
 			await cdp.waitFor(idle);
 			assert(await cdp.ev(() => document.querySelectorAll('.workspace-leaf-content[data-type="p3n"]').length) === 1, 'not one view');
 		});
@@ -606,17 +609,17 @@ async function main() {
 			await cdp.ev(() => window.app.emulateMobile(true)).catch(() => null);
 			await sleep(2000);
 			try {
-				await cdp.waitFor(() => window.app?.workspace?.layoutReady && window.app.isMobile && !!window.app.plugins.plugins.p3n, [], 60_000);
+				await cdp.waitFor((id) => window.app?.workspace?.layoutReady && window.app.isMobile && !!window.app.plugins.plugins[id], [ID], 60_000);
 				await cdp.ev(() => { window.__ed = () => window.app.workspace.getLeavesOfType('markdown').find((l) => l.view.file?.path === 'Team update.md')?.view.editor; });
-				await cdp.ev(installMock, FIXTURES);
+				await cdp.ev(installMock, FIXTURES, ID);
 				await cdp.ev(selectInNote, AI_TEXT);
-				await run(cdp, 'p3n:check');
+				await run(cdp, 'check');
 				await cdp.waitFor(idle);
 				assert((await cdp.ev(resultText)).includes('Likely AI-written'), 'no result');
 				await cdp.shot('mobile-check');
 				await cdp.ev(selectInNote, SHORT);
 				await sleep(800); // going back to the note closes the drawer, with an animation
-				await run(cdp, 'p3n:rewrite');
+				await run(cdp, 'rewrite');
 				await cdp.waitFor(idle);
 				assert(await cdp.ev(() => !window.app.workspace.rightSplit.collapsed), 'the drawer is closed');
 				await cdp.shot('mobile-rewrite');

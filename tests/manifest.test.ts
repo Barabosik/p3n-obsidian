@@ -19,7 +19,9 @@ describe('manifest.json', () => {
 
 	it('id and name: short, no "obsidian" or "plugin"', () => {
 		for (const k of ['id', 'name', 'description']) assert.doesNotMatch(String(manifest[k]), /obsidian|plugin/i, k);
-		assert.match(String(manifest.id), /^[a-z0-9-]+$/);
+		// Only lowercase letters and hyphens: the directory refused "p3n" for its digit.
+		assert.match(String(manifest.id), /^[a-z]+(-[a-z]+)*$/);
+		assert.doesNotMatch(String(manifest.id), /plugin$/);
 		assert.match(String(manifest.name), /^[A-Za-z0-9 +()-]+$/);
 	});
 

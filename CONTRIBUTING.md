@@ -9,7 +9,7 @@ npm run lint    # eslint-plugin-obsidianmd: the rules the community directory's 
 npm test        # unit tests: the API client, the result copy, selection and Replace
 ```
 
-`npm run dev` rebuilds `main.js` on every change. To try it in a vault, copy `main.js`, `manifest.json` and `styles.css` into `<vault>/.obsidian/plugins/p3n/` and reload Obsidian.
+`npm run dev` rebuilds `main.js` on every change. To try it in a vault, copy `main.js`, `manifest.json` and `styles.css` into `<vault>/.obsidian/plugins/ai-pen/` and reload Obsidian.
 
 ## In a real Obsidian
 
