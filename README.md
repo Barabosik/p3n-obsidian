@@ -54,6 +54,8 @@ From Obsidian: **Settings → Community plugins → Browse → p3n**, then **Ins
 
 By hand: download `main.js`, `manifest.json` and `styles.css` from the [latest release](https://github.com/Barabosik/p3n-obsidian/releases/latest) into `<your vault>/.obsidian/plugins/ai-pen/`, then enable **p3n** in **Settings → Community plugins**.
 
+What changed in each version is in [CHANGELOG.md](CHANGELOG.md).
+
 ![p3n on a phone](docs/mobile.png)
 
 ## Other p3n apps
