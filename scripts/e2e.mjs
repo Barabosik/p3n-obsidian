@@ -215,6 +215,24 @@ const clickButton = (label) => {
 	b.click();
 	return true;
 };
+// Picks a secret with the API key window's picker, as a person would: its button (Link... or Change), the
+// secret, Save. Returns true, or what's missing.
+async function pickSecret(name) {
+	const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+	const row = document.querySelector('.modal.p3n-key-modal .setting-item-control');
+	const open = [...(row?.querySelectorAll('button') ?? [])].find((b) => b.textContent !== 'Remove key');
+	if (!open) return 'no picker button';
+	open.click();
+	for (let i = 0; i < 50 && !document.querySelector('.modal.mod-secret .suggestion-item'); i++) await wait(100);
+	const item = [...document.querySelectorAll('.modal.mod-secret .suggestion-item')].find((e) => e.querySelector('.suggestion-title')?.textContent === name);
+	if (!item) return `no ${name} in ${document.querySelector('.modal.mod-secret')?.innerText}`;
+	item.click();
+	const save = [...document.querySelectorAll('.modal.mod-secret button')].find((b) => b.textContent === 'Save');
+	if (!save) return 'no Save';
+	save.click();
+	return true;
+}
+const keyStatus = () => document.querySelector('.modal.p3n-key-modal .p3n-key-status')?.textContent ?? null;
 
 // ---- the run ---------------------------------------------------------------------------------------
 
@@ -330,6 +348,16 @@ async function main() {
 			return;
 		}
 
+		await check('focus: the first check opens the results and leaves the focus in the note', async () => {
+			await cdp.ev(() => window.app.workspace.getLeavesOfType('p3n').forEach((l) => l.detach()));
+			assert(await cdp.ev(selectInNote, AI_TEXT), 'could not select');
+			await run(cdp, 'check');
+			await cdp.waitFor(idle);
+			const where = await cdp.ev(() => ({ views: window.app.workspace.getLeavesOfType('p3n').length, collapsed: window.app.workspace.rightSplit.collapsed, active: window.app.workspace.activeLeaf?.view.getViewType(), focus: !!window.__ed()?.hasFocus() }));
+			assert(where.views === 1 && !where.collapsed, `results not shown: ${JSON.stringify(where)}`);
+			assert(where.active === 'markdown' && where.focus, `the note lost the focus: ${JSON.stringify(where)}`);
+		});
+
 		await check('check: score, label, reason, sentences; X-P3N-Client, keyless', async () => {
 			assert(await cdp.ev(selectInNote, AI_TEXT), 'could not select');
 			await run(cdp, 'check');
@@ -440,6 +468,42 @@ async function main() {
 			await cdp.ev(selectInNote, null);
 		});
 
+		await check('rewrite: says so when it dropped a link from the selection', async () => {
+			const linked = 'Our [[Q3 plan]] covers the launch for teams of every size, from small ones to large ones.';
+			await cdp.ev(selectInNote, null);
+			await cdp.ev((text) => window.__ed().replaceRange(`${text}\n`, { line: 0, ch: 0 }), linked);
+			assert(await cdp.ev(selectInNote, linked), 'could not select');
+			await cdp.ev((body) => window.__p3n.queue.push({ status: 200, body }), { ...FIXTURES.humanize, output: { ...FIXTURES.humanize.output, text: 'The Q3 plan covers the launch for every team, small or large.\n' } });
+			await run(cdp, 'rewrite');
+			await cdp.waitFor(idle);
+			const t = await cdp.ev(resultText);
+			assert(t.includes('The rewrite dropped the link in your selection. Add it back after you replace it if you need it.'), t);
+			await cdp.ev((note) => window.__ed().setValue(note), NOTE);
+		});
+
+		await check('rewrite: Copy copies the rewrite, and says so when the clipboard refuses', async () => {
+			// A stand-in clipboard: the run must not overwrite yours.
+			await cdp.ev(() => {
+				window.__copied = null;
+				navigator.clipboard.writeText = async (t) => { window.__copied = t; };
+			});
+			try {
+				await cdp.ev(selectInNote, SHORT);
+				await run(cdp, 'rewrite');
+				await cdp.waitFor(idle);
+				assert(await cdp.ev(clickButton, 'Copy'), 'no Copy');
+				await cdp.waitFor(() => [...document.querySelectorAll('.p3n-view button')].some((b) => b.textContent === 'Copied'));
+				assert(await cdp.ev(() => window.__copied) === REWRITE, `copied "${await cdp.ev(() => window.__copied)}"`);
+				await cdp.ev(() => { navigator.clipboard.writeText = () => Promise.reject(new DOMException('Document is not focused.', 'NotAllowedError')); });
+				await cdp.waitFor(() => [...document.querySelectorAll('.p3n-view button')].some((b) => b.textContent === 'Copy'), [], 5000);
+				await cdp.ev(clickButton, 'Copy');
+				const status = await cdp.waitFor(() => document.querySelector('.p3n-view .p3n-result .p3n-note.p3n-warn')?.innerText);
+				assert(status === "p3n couldn't copy it. Select the text in the box above and copy it.", status);
+			} finally {
+				await cdp.ev(() => { delete navigator.clipboard.writeText; });
+			}
+		});
+
 		await check('select: nothing selected, several selections, too short: no call', async () => {
 			const before = await cdp.ev(() => window.__p3n.requests.length);
 			await cdp.ev(selectInNote, null);
@@ -455,9 +519,58 @@ async function main() {
 			assert(hint === 'p3n works on one selection at a time. Select one passage.', hint);
 			await cdp.ev(selectInNote, 'Intro line.');
 			await run(cdp, 'check');
-			const t = await cdp.waitFor(() => document.querySelector('.p3n-view .p3n-error')?.innerText);
+			let t = await cdp.waitFor(() => document.querySelector('.p3n-view .p3n-error')?.innerText);
 			assert(t === 'Check needs at least 40 characters, a sentence or two. Select more.', t);
+			// Rewrite counts words as the API does: seven words and a year are too few.
+			await cdp.ev(() => window.__ed().replaceRange('We shipped the new release in March 2029.\n', { line: 0, ch: 0 }));
+			await cdp.ev(selectInNote, 'We shipped the new release in March 2029.');
+			await run(cdp, 'rewrite');
+			t = await cdp.waitFor(() => document.querySelector('.p3n-view .p3n-error')?.innerText);
+			assert(t === 'Rewrite needs at least a sentence of eight words. Select more.', t);
+			await cdp.ev((note) => window.__ed().setValue(note), NOTE);
 			assert(await cdp.ev(() => window.__p3n.requests.length) === before, 'a call was sent');
+		});
+
+		await check("select: a note in reading view: the commands aren't offered; the view's buttons say to switch", async () => {
+			const before = await cdp.ev(() => window.__p3n.requests.length);
+			await cdp.ev(selectInNote, AI_TEXT);
+			await cdp.ev(async () => {
+				const leaf = window.app.workspace.getLeavesOfType('markdown').find((l) => l.view.file?.path === 'Team update.md');
+				const vs = leaf.getViewState();
+				await leaf.setViewState({ ...vs, state: { ...vs.state, mode: 'preview' } });
+				window.app.workspace.setActiveLeaf(leaf, { focus: true });
+			});
+			try {
+				const offered = await cdp.ev((id) => window.app.commands.listCommands().filter((c) => c.id === `${id}:check` || c.id === `${id}:rewrite`).length, ID);
+				assert(offered === 0, `${offered} offered in reading view`);
+				await cdp.ev(() => document.querySelector('.p3n-view .p3n-result')?.replaceChildren());
+				assert(await cdp.ev(clickButton, 'Check for AI'), 'no Check for AI');
+				const hint = await cdp.waitFor(() => { const h = document.querySelector('.p3n-view > .p3n-note.p3n-warn'); return h && h.style.display !== 'none' && h.innerText; });
+				assert(hint === 'This note is in reading view. Switch to editing view and select the text there.', hint);
+				assert(await cdp.ev(() => window.__p3n.requests.length) === before, 'a call was sent');
+			} finally {
+				await cdp.ev(async () => {
+					const leaf = window.app.workspace.getLeavesOfType('markdown').find((l) => l.view.file?.path === 'Team update.md');
+					const vs = leaf.getViewState();
+					await leaf.setViewState({ ...vs, state: { ...vs.state, mode: 'source' } });
+				});
+			}
+		});
+
+		await check('select: too long without a key: no call, and Add an API key opens the key window', async () => {
+			const before = await cdp.ev(() => window.__p3n.requests.length);
+			const long = `${SHORT} `.repeat(32).trim();
+			await cdp.ev((text) => window.__ed().replaceRange(`${text}\n`, { line: 0, ch: 0 }), long);
+			await cdp.ev(selectInNote, long);
+			await run(cdp, 'check');
+			const t = await cdp.waitFor(() => document.querySelector('.p3n-view .p3n-error')?.innerText);
+			assert(t.startsWith(`That's ${long.length.toLocaleString('en-US')} characters. Without an API key p3n takes up to 5,000. Select less, or add a key.`), t);
+			assert(await cdp.ev(() => window.__p3n.requests.length) === before, 'a call was sent');
+			await cdp.ev((note) => window.__ed().setValue(note), NOTE);
+			assert(await cdp.ev(clickButton, 'Add an API key'), 'no Add an API key');
+			await cdp.waitFor(keyModal);
+			await cdp.key('Escape', 'Escape', 27);
+			await cdp.waitFor(() => !document.querySelector('.modal.p3n-key-modal'));
 		});
 
 		await check('errors: free limit, with Sign up to p3n.si only and Add an API key', async () => {
@@ -545,6 +658,25 @@ async function main() {
 			await cdp.key('Escape', 'Escape', 27);
 		});
 
+		await check('palette: from the p3n view, Check for AI works on the note last worked in', async () => {
+			await cdp.waitFor(() => !document.querySelector('.prompt'));
+			await cdp.ev(selectInNote, AI_TEXT);
+			await cdp.ev(() => window.app.workspace.setActiveLeaf(window.app.workspace.getLeavesOfType('p3n')[0], { focus: true }));
+			assert(await cdp.ev(() => window.app.workspace.activeLeaf?.view.getViewType()) === 'p3n', 'the p3n view is not active');
+			await cdp.ev(() => window.app.commands.executeCommandById('command-palette:open'));
+			await cdp.waitFor(() => document.querySelector('.prompt-input'));
+			await cdp.send('Input.insertText', { text: 'p3n' });
+			const items = await cdp.waitFor(() => { const t = [...document.querySelectorAll('.prompt .suggestion-item')].map((e) => e.innerText.trim().replace(/^p3n:?\s*/, '')); return t.length >= 4 && t; });
+			for (const want of ['Check for AI', 'Rewrite']) assert(items.includes(want), `${want} not in ${JSON.stringify(items)}`);
+			await cdp.key('Escape', 'Escape', 27);
+			await cdp.waitFor(() => !document.querySelector('.prompt'));
+			const n = await cdp.ev(() => window.__p3n.requests.length);
+			await run(cdp, 'check');
+			await cdp.waitFor(idle);
+			const req = await cdp.ev(() => window.__p3n.requests.at(-1));
+			assert(await cdp.ev(() => window.__p3n.requests.length) === n + 1 && JSON.parse(req.body).text === AI_TEXT, `sent ${req.url} ${req.body?.slice(0, 60)}`);
+		});
+
 		await check('key: Set API key opens the API key window', async () => {
 			await cdp.waitFor(() => !document.querySelector('.prompt'));
 			await cdp.ev((id) => window.app.commands.executeCommandById(`${id}:set-api-key`), ID);
@@ -552,6 +684,50 @@ async function main() {
 			assert(m.title === 'API key', m.title);
 			for (const want of ['10 calls an hour', 'sign up at p3n.si', 'API keys', "Obsidian's keychain", 'Remove key']) assert(m.text.includes(want), `missing "${want}" in ${m.text}`);
 			await cdp.shot('key-window');
+			await cdp.key('Escape', 'Escape', 27);
+			await cdp.waitFor(() => !document.querySelector('.modal.p3n-key-modal'));
+		});
+
+		await check('key: a picked key is saved only once p3n accepts it', async () => {
+			await cdp.ev(() => {
+				const s = window.app.secretStorage;
+				s.setSecret('p3n-e2e-typo', 'sk-not-a-p3n-key');
+				s.setSecret('p3n-e2e-good', 'p3n_e2e_good');
+				s.setSecret('p3n-e2e-revoked', 'p3n_e2e_revoked');
+			});
+			await cdp.ev((id) => window.app.commands.executeCommandById(`${id}:set-api-key`), ID);
+			await cdp.waitFor(keyModal);
+			const statusIs = (want) => cdp.waitFor((w) => { const t = document.querySelector('.modal.p3n-key-modal .p3n-key-status')?.textContent; return t === w && t; }, [want])
+				.catch(async () => { throw new Error(`key status: "${await cdp.ev(keyStatus)}", want "${want}"`); });
+			const saved = () => cdp.ev(() => window.__plugin().settings.keySecret);
+			const n = await cdp.ev(() => window.__p3n.requests.length);
+			// Not a p3n key: no call, nothing saved.
+			let r = await cdp.ev(pickSecret, 'p3n-e2e-typo');
+			assert(r === true, r);
+			await statusIs("Keys start with p3n_. Copy the whole key from the API keys page. The key wasn't saved.");
+			assert(await saved() === '', `saved "${await saved()}"`);
+			assert(await cdp.ev(() => window.__p3n.requests.length) === n, 'a call was sent');
+			// Accepted: saved, with who it signs in as.
+			// Two answers: the key check, then the results view's balance line once the key is saved.
+			await cdp.ev(() => {
+				const me = { status: 200, body: { email: 'test@example.com', balance_usd: '1.5', key: { name: 'laptop', prefix: 'p3n_e2e' } } };
+				window.__p3n.queue.push(me, me);
+			});
+			r = await cdp.ev(pickSecret, 'p3n-e2e-good');
+			assert(r === true, r);
+			await statusIs('Saved. Signed in as test@example.com, balance $1.50.');
+			assert(await saved() === 'p3n-e2e-good', `saved "${await saved()}"`);
+			const me = await cdp.ev((from) => window.__p3n.requests.slice(from).find((q) => q.url.endsWith('/v1/me')), n);
+			assert(me?.method === 'GET' && me.headers.Authorization === 'Bearer p3n_e2e_good', JSON.stringify(me));
+			await cdp.shot('key-saved');
+			// Refused (the mock refuses any key it wasn't told to accept): the good key stays.
+			r = await cdp.ev(pickSecret, 'p3n-e2e-revoked');
+			assert(r === true, r);
+			await statusIs("p3n doesn't accept this key, so it wasn't saved. Copy it again from the API keys page.");
+			assert(await saved() === 'p3n-e2e-good', `saved "${await saved()}"`);
+			await cdp.ev(() => [...document.querySelectorAll('.modal.p3n-key-modal button')].find((b) => b.textContent === 'Remove key').click());
+			await cdp.waitFor(() => document.querySelector('.modal.p3n-key-modal .p3n-key-status')?.textContent.startsWith('Key removed'));
+			assert(await saved() === '', 'key name still saved');
 			await cdp.key('Escape', 'Escape', 27);
 			await cdp.waitFor(() => !document.querySelector('.modal.p3n-key-modal'));
 		});
@@ -614,6 +790,45 @@ async function main() {
 		await cdp.ev(() => { window.__ed = () => window.app.workspace.getLeavesOfType('markdown').find((l) => l.view.file?.path === 'Team update.md')?.view.editor; });
 		});
 
+		// The view dragged into its own window: its elements and document are that window's, not the main one's.
+		await check('popout: results in their own window; the score settles; Try another rewrite keeps the focus', async () => {
+			await cdp.ev(() => {
+				const leaf = window.app.workspace.getLeavesOfType('p3n')[0];
+				window.app.workspace.moveLeafToPopout(leaf);
+			});
+			await cdp.ev(() => {
+				// The view, wherever it is; and its score once the count has finished.
+				window.__pv = () => window.app.workspace.getLeavesOfType('p3n')[0]?.view.containerEl;
+				window.__settled = () => {
+					const el = window.__pv();
+					const n = el?.querySelector('.p3n-num');
+					return el?.querySelector('.p3n-busy')?.style.display.includes('none') && !!n && n.textContent === el.querySelector('.p3n-sr')?.textContent && n.textContent;
+				};
+			});
+			await cdp.waitFor(() => window.__pv()?.doc !== document && !!window.__pv()?.querySelector('.p3n-view'), [], 20_000);
+			try {
+				await cdp.ev(selectInNote, SHORT);
+				await cdp.ev(() => window.__pv().querySelector('.p3n-result').replaceChildren());
+				await cdp.ev((c) => window.app.commands.executeCommandById(c), `${ID}:rewrite`);
+				const pct = await cdp.waitFor(() => window.__settled(), [], 15_000);
+				assert(pct === '1%', `score ${pct}`);
+				// Keyboard: Try another rewrite clears the result it's in; the focus comes back to the new one.
+				await cdp.ev(() => {
+					const b = [...window.__pv().querySelectorAll('button')].find((x) => x.textContent === 'Try another rewrite');
+					b.focus();
+					b.click();
+				});
+				await cdp.waitFor(() => window.__settled(), [], 15_000);
+				const focus = await cdp.ev(() => { const el = window.__pv(); return el.doc.activeElement === el.querySelector('.p3n-result').firstElementChild || el.doc.activeElement?.outerHTML.slice(0, 80) || 'nothing'; });
+				assert(focus === true, `focus on ${focus}`);
+				const sent = await cdp.ev(() => JSON.parse(window.__p3n.requests.at(-1).body));
+				assert(sent.options?.fresh === true, JSON.stringify(sent));
+			} finally {
+				// Closing the window's only tab closes the window; the next run opens the view in the sidebar again.
+				await cdp.ev(() => window.app.workspace.getLeavesOfType('p3n').forEach((l) => l.detach()));
+			}
+		});
+
 		await check('unload: disabling and enabling again leaves no errors and keeps the view', async () => {
 			await cdp.ev(async (id) => {
 				await window.app.plugins.disablePlugin(id);
@@ -627,12 +842,14 @@ async function main() {
 		});
 
 		// Obsidian's own mobile emulation (app.emulateMobile reloads the app in its phone layout), at phone size.
+		// In the dark theme, as the README's phone screenshot shows it.
 		await check('mobile: Check and Rewrite in the phone layout, Replace says Undo', async () => {
 			await cdp.send('Emulation.setDeviceMetricsOverride', { width: 450, height: 800, deviceScaleFactor: 2, mobile: true });
 			await cdp.ev(() => window.app.emulateMobile(true)).catch(() => null);
 			await sleep(2000);
 			try {
 				await cdp.waitFor((id) => window.app?.workspace?.layoutReady && window.app.isMobile && !!window.app.plugins.plugins[id], [ID], 60_000);
+				await cdp.ev(() => window.app.changeTheme('obsidian'));
 				await cdp.ev(() => { window.__ed = () => window.app.workspace.getLeavesOfType('markdown').find((l) => l.view.file?.path === 'Team update.md')?.view.editor; });
 				await cdp.ev(installMock, FIXTURES, ID);
 				await cdp.ev(selectInNote, AI_TEXT);
@@ -657,6 +874,7 @@ async function main() {
 				await sleep(2000);
 				await cdp.waitFor(() => window.app?.workspace?.layoutReady && !window.app.isMobile, [], 60_000);
 				await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1200, height: 800, deviceScaleFactor: 1, mobile: false });
+				await cdp.ev(() => window.app.changeTheme('moonstone'));
 			}
 		});
 

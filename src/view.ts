@@ -71,7 +71,7 @@ export class P3nView extends ItemView {
 		this.quotaEl = footer.createSpan({ cls: 'p3n-small p3n-muted' });
 		this.keyBtn = footer.createEl('button', { cls: 'p3n-link p3n-push p3n-small' });
 		this.keyBtn.addEventListener('click', () => this.plugin.openKey());
-		this.refreshAccount();
+		void this.refreshAccount();
 	}
 
 	async onClose() {
@@ -94,11 +94,12 @@ export class P3nView extends ItemView {
 		this.sourceEl.setText(sourceLine(source.note, text.length, !!key));
 		this.sourceEl.show();
 		const why = refuse(skill, text, !!key);
-		if (why) return this.showError(new ApiError(422, 'invalid_request', why));
+		if (why) return this.showError(new ApiError(422, why.type, why.message));
 		const controller = new AbortController();
 		this.controller = controller;
 		// Try another rewrite is inside the result: clearing it drops keyboard focus, so bring it back after.
-		const refocus = this.resultEl.contains(activeDocument.activeElement);
+		// The view's own document: in a pop-out window it isn't the main one.
+		const refocus = this.resultEl.contains(this.resultEl.doc.activeElement);
 		this.resultEl.empty();
 		this.setBusy(skill);
 		try {
@@ -113,7 +114,7 @@ export class P3nView extends ItemView {
 				this.controller = null;
 				this.setBusy(null);
 			}
-			this.refreshAccount();
+			void this.refreshAccount();
 			if (refocus) focusOn(this.resultEl.firstElementChild);
 		}
 	}
@@ -204,7 +205,7 @@ export class P3nView extends ItemView {
 		rep.addEventListener('click', () => {
 			const r = this.plugin.replaceInNote(source, rewrite);
 			if (r === 'ok') {
-				const hadFocus = activeDocument.activeElement === rep;
+				const hadFocus = rep.doc.activeElement === rep;
 				rep.setText('Replaced');
 				rep.disabled = true; // a disabled button loses focus: keep it on the status that says what happened
 				say(`Replaced in the note and selected there. ${undoKey(Platform)} in the note undoes it.`, 'ok');
@@ -219,13 +220,19 @@ export class P3nView extends ItemView {
 		});
 		const copy = row.createEl('button', { text: 'Copy' });
 		let reset = 0;
-		copy.addEventListener('click', () => {
-			void navigator.clipboard.writeText(rewrite.trim()).then(() => {
-				copy.setText('Copied');
-				window.clearTimeout(reset);
-				reset = window.setTimeout(() => copy.setText('Copy'), 1500);
-			});
-		});
+		// The clipboard of the window the view is in: a pop-out window's own, which has the focus.
+		const copyText = async () => {
+			try {
+				await copy.win.navigator.clipboard.writeText(rewrite.trim());
+			} catch {
+				say("p3n couldn't copy it. Select the text in the box above and copy it.", 'warn');
+				return;
+			}
+			copy.setText('Copied');
+			window.clearTimeout(reset);
+			reset = window.setTimeout(() => copy.setText('Copy'), 1500);
+		};
+		copy.addEventListener('click', () => void copyText());
 		row.createEl('button', { cls: 'p3n-link p3n-push p3n-small', text: 'Try another rewrite' })
 			.addEventListener('click', () => void this.start('humanize', source, { fresh: true }));
 		for (const n of h.notes) box.createEl('p', { cls: n.warn ? 'p3n-note p3n-warn p3n-small' : 'p3n-small p3n-muted', text: n.text });
@@ -250,23 +257,26 @@ export class P3nView extends ItemView {
 
 	// ---- account ------------------------------------------------------------------------------
 
-	refreshAccount() {
+	async refreshAccount() {
 		if (!this.quotaEl) return;
 		const key = this.plugin.getKey();
 		this.keyBtn.setText(key ? 'API key' : 'Add API key');
 		const line = quotaLine(!!key, this.plugin.free);
 		if (line !== null) return this.quotaEl.setText(line);
 		this.quotaEl.setText('');
-		this.plugin.client.me(key).then(
-			(m) => this.quotaEl.setText(balanceLine(m.balance_usd, m.key?.name ?? m.key?.prefix)),
-			(e) => this.quotaEl.setText(e instanceof ApiError && e.type === 'unauthorized' ? "Your API key wasn't accepted. Change it under API key." : ''),
-		);
+		try {
+			const m = await this.plugin.client.me(key);
+			this.quotaEl.setText(balanceLine(m.balance_usd, m.key?.name ?? m.key?.prefix));
+		} catch (e) {
+			this.quotaEl.setText(e instanceof ApiError && e.type === 'unauthorized' ? "Your API key wasn't accepted. Change it under API key." : '');
+		}
 	}
 }
 
 // Moves keyboard focus to something that isn't focusable by itself (a result, a status line).
+// instanceOf, not instanceof: in a pop-out window the element comes from that window's HTMLElement.
 function focusOn(el: Element | null) {
-	if (!(el instanceof HTMLElement)) return;
+	if (!el?.instanceOf(HTMLElement)) return;
 	el.tabIndex = -1;
 	el.focus({ preventScroll: true });
 }
@@ -320,8 +330,10 @@ function runScore(root: HTMLElement) {
 	const from = Number(scoreEl.dataset.from);
 	const to = Number(scoreEl.dataset.to);
 	const end = (scoreEl.dataset.tone as Tone | undefined) ?? toneOf(to);
-	// A hidden window gets no animation frames, so the count would stop part way: show the end state.
-	if (calm() || from === to || activeDocument.hidden) return;
+	// A hidden window gets no animation frames, so the count would stop part way: show the end state. The frames
+	// and the clock are the view's own window's: in a pop-out window, the main one may be hidden.
+	const win = root.win;
+	if (calm() || from === to || root.doc.hidden) return;
 	const draw = (v: number, t = toneOf(v)) => {
 		num.setText(`${Math.round(v)}%`);
 		pctEl.removeClass('p3n-t-ai', 'p3n-t-mid', 'p3n-t-human');
@@ -329,7 +341,7 @@ function runScore(root: HTMLElement) {
 		if (bar) bar.className = `p3n-b-${t}`;
 	};
 	const scale = (v: number) => bar?.setCssProps({ '--p3n-scale': String(Math.max(3, v) / Math.max(3, to)) });
-	const t0 = performance.now() + 120;
+	const t0 = win.performance.now() + 120;
 	const ms = 800;
 	draw(from);
 	scale(from);
@@ -340,11 +352,11 @@ function runScore(root: HTMLElement) {
 		if (p < 1) {
 			draw(v);
 			scale(v);
-			window.requestAnimationFrame(step);
+			win.requestAnimationFrame(step);
 		} else {
 			draw(to, end);
 			bar?.setCssProps({ '--p3n-scale': '1' });
 		}
 	};
-	window.requestAnimationFrame(step);
+	win.requestAnimationFrame(step);
 }

@@ -1,5 +1,6 @@
 import { type App, Modal, PluginSettingTab, SecretComponent, Setting, type SettingDefinitionItem } from 'obsidian';
-import { ApiError, LINKS } from './api.ts';
+import { LINKS } from './api.ts';
+import { KEY_PATTERN, checkKey } from './key.ts';
 import type P3nPlugin from './main.ts';
 
 export interface P3nSettings {
@@ -11,15 +12,13 @@ export const DEFAULT_SETTINGS: P3nSettings = {
 	keySecret: '',
 };
 
-const KEY_PATTERN = /^p3n_\S+$/;
-
 function keyDesc(): DocumentFragment {
 	return createFragment((f) => {
 		f.appendText('Optional. Without a key, p3n gives you 10 calls an hour, up to 5,000 characters each. For more, ');
 		f.createEl('a', { text: 'sign up at p3n.si', href: LINKS.signup });
 		f.appendText(' (you get free credit), create a key on the ');
 		f.createEl('a', { text: 'API keys', href: LINKS.keys });
-		f.appendText(" page and add it here. The key is kept in Obsidian's keychain on this device, not in your notes or the plugin's data.json.");
+		f.appendText(" page and add it here; it's saved once p3n accepts it. The key is kept in Obsidian's keychain on this device, not in your notes or the plugin's data.json.");
 	});
 }
 
@@ -28,50 +27,63 @@ const PRIVACY = 'Only the text you select, and only when you choose Check for AI
 // The key row: Obsidian's secret picker, a Remove button and a line saying whether p3n accepts the key.
 // Used by the settings tab and by the API key window the results view opens.
 function keyRow(setting: Setting, plugin: P3nPlugin) {
-	const status = setting.descEl.createDiv({ cls: 'p3n-key-status' });
+	const status = setting.descEl.createDiv({ cls: 'p3n-key-status', attr: { role: 'status' } });
 	let pending = 0;
 	const say = (msg: string, kind = '') => {
 		status.setText(msg);
 		status.className = `p3n-key-status${kind ? ` p3n-${kind}` : ''}`;
 	};
-	const check = async () => {
+	// Each check takes a number: an older one still on its way must not overwrite a newer line.
+	const check = async (key: string, saving: boolean) => {
 		const mine = ++pending;
-		const key = plugin.getKey();
-		if (!plugin.settings.keySecret) return say('');
-		if (!key) return say('That secret is empty on this device. Pick another, or add the key again.', 'warn');
-		if (!KEY_PATTERN.test(key)) return say('Keys start with p3n_. Copy the whole key from the API keys page.', 'warn');
-		say('Checking the key…');
-		try {
-			const m = await plugin.client.me(key);
-			if (mine !== pending) return;
-			say(`Signed in as ${m.email ?? 'your account'}, balance $${Number(m.balance_usd ?? 0).toFixed(2)}.`, 'ok');
-		} catch (e) {
-			if (mine !== pending) return;
-			say(e instanceof ApiError && e.type === 'unauthorized' ? "p3n doesn't accept this key. Copy it again from the API keys page." : e instanceof Error ? e.message : String(e), 'error');
-		}
+		if (KEY_PATTERN.test(key)) say('Checking the key…');
+		const r = await checkKey(plugin.client, key, saving);
+		return mine === pending ? r : null;
 	};
 	let picker: SecretComponent | null = null;
+	// Setting the picker back must not count as a new pick.
+	let quiet = false;
+	const setPicker = (name: string) => {
+		quiet = true;
+		picker?.setValue(name);
+		quiet = false;
+	};
+	const remove = async () => {
+		pending++;
+		plugin.settings.keySecret = '';
+		await plugin.saveSettings();
+		setPicker('');
+		say('Key removed. p3n still works without one, with the free hourly limit. The key itself stays in the keychain (Settings, Keychain) until you delete it there.');
+	};
+	// A picked key is saved only when p3n accepts it; otherwise the picker goes back to the saved one.
+	const pick = async (name: string) => {
+		const r = await check((plugin.app.secretStorage.getSecret(name) ?? '').trim(), true);
+		if (!r) return;
+		if (r.ok) {
+			plugin.settings.keySecret = name;
+			await plugin.saveSettings();
+		} else {
+			setPicker(plugin.settings.keySecret);
+		}
+		say(r.text, r.kind);
+	};
 	setting.addComponent((el) => {
 		picker = new SecretComponent(plugin.app, el)
 			.setValue(plugin.settings.keySecret)
-			.onChange(async (name) => {
-				plugin.settings.keySecret = name ?? '';
-				await plugin.saveSettings();
-				void check();
+			.onChange((name) => {
+				if (!quiet) void (name ? pick(name) : remove());
 			});
 		return picker;
 	});
 	setting.addButton((b) => b
 		.setButtonText('Remove key')
-		.onClick(async () => {
-			// A key check still on its way must not overwrite this.
-			pending++;
-			plugin.settings.keySecret = '';
-			await plugin.saveSettings();
-			picker?.setValue('');
-			say('Key removed. p3n still works without one, with the free hourly limit. The key itself stays in the keychain (Settings, Keychain) until you delete it there.');
-		}));
-	void check();
+		.onClick(() => void remove()));
+	// The saved key, when the row opens.
+	const show = async () => {
+		const r = await check(plugin.getKey(), false);
+		if (r) say(r.text, r.kind);
+	};
+	if (plugin.settings.keySecret) void show();
 }
 
 export class P3nSettingTab extends PluginSettingTab {

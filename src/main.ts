@@ -5,6 +5,10 @@ import { CAPTURE_HINTS, type Source, capture, findSentence, replace, select } fr
 import { obsidianTransport } from './transport.ts';
 import { ICON, P3nView, VIEW_TYPE } from './view.ts';
 
+// A note in reading view: its editor still holds the last selection made in editing view, which isn't what the
+// reader sees selected. Obsidian's own editor commands aren't offered there either.
+const reading = (v: unknown) => v instanceof MarkdownView && v.getMode() === 'preview';
+
 export default class P3nPlugin extends Plugin {
 	settings: P3nSettings = { ...DEFAULT_SETTINGS };
 	client!: P3nClient;
@@ -16,17 +20,18 @@ export default class P3nPlugin extends Plugin {
 		this.client = new P3nClient(obsidianTransport, `p3n-obsidian/${this.manifest.version}`);
 		this.registerView(VIEW_TYPE, (leaf) => new P3nView(leaf, this));
 
+		// In a note, or in the p3n view, where they work on the note last worked in (as the view's buttons do).
 		this.addCommand({
 			id: 'check',
 			name: 'Check for AI',
 			icon: 'scan-text',
-			editorCallback: (editor, ctx) => void this.runFromEditor('detect', editor, ctx),
+			checkCallback: (checking) => this.command('detect', checking),
 		});
 		this.addCommand({
 			id: 'rewrite',
 			name: 'Rewrite',
 			icon: ICON,
-			editorCallback: (editor, ctx) => void this.runFromEditor('humanize', editor, ctx),
+			checkCallback: (checking) => this.command('humanize', checking),
 		});
 		this.addCommand({
 			id: 'open',
@@ -77,13 +82,15 @@ export default class P3nPlugin extends Plugin {
 		new KeyModal(this.app, this).open();
 	}
 
-	async activateView(): Promise<P3nView | null> {
+	// Shows the view. `focus`: make it the active leaf when it's new (Open results, the ribbon); a check or a
+	// rewrite leaves the focus in the note, whether the view was open already or not.
+	async activateView(focus = true): Promise<P3nView | null> {
 		const { workspace } = this.app;
 		let leaf: WorkspaceLeaf | null = workspace.getLeavesOfType(VIEW_TYPE)[0] ?? null;
 		if (!leaf) {
 			leaf = workspace.getRightLeaf(false);
 			if (!leaf) return null;
-			await leaf.setViewState({ type: VIEW_TYPE, active: true });
+			await leaf.setViewState({ type: VIEW_TYPE, active: focus });
 		}
 		await workspace.revealLeaf(leaf);
 		return leaf.view instanceof P3nView ? leaf.view : null;
@@ -91,14 +98,14 @@ export default class P3nPlugin extends Plugin {
 
 	refreshViews() {
 		for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
-			if (leaf.view instanceof P3nView) leaf.view.refreshAccount();
+			if (leaf.view instanceof P3nView) void leaf.view.refreshAccount();
 		}
 	}
 
 	// Sends the editor's selection, after a click: the command, the right-click menu or the view's buttons.
 	async runFromEditor(skill: Skill, editor: Editor, ctx: MarkdownView | MarkdownFileInfo) {
 		const file = ctx.file;
-		const view = await this.activateView();
+		const view = await this.activateView(false);
 		if (!view) return;
 		if (!file) return view.hint(CAPTURE_HINTS.noNote);
 		const got = capture(editor, file.path, file.basename);
@@ -106,12 +113,26 @@ export default class P3nPlugin extends Plugin {
 		await view.start(skill, got.source);
 	}
 
+	// The Check for AI and Rewrite commands: there whenever a note is open for editing, and in the p3n view,
+	// so the palette and hotkeys still find them after a click in the view.
+	private command(skill: Skill, checking: boolean): boolean {
+		const { workspace } = this.app;
+		const active = workspace.activeEditor;
+		if (active?.editor && !reading(active)) {
+			if (!checking) void this.runFromEditor(skill, active.editor, active);
+			return true;
+		}
+		if (!workspace.getActiveViewOfType(P3nView)) return false;
+		if (!checking) void this.runFromRecentEditor(skill);
+		return true;
+	}
+
 	// The view's own buttons: the selection in the note last worked in.
 	async runFromRecentEditor(skill: Skill) {
 		const leaf = this.app.workspace.getMostRecentLeaf();
-		if (leaf?.view instanceof MarkdownView) return this.runFromEditor(skill, leaf.view.editor, leaf.view);
+		if (leaf?.view instanceof MarkdownView && !reading(leaf.view)) return this.runFromEditor(skill, leaf.view.editor, leaf.view);
 		const view = await this.activateView();
-		view?.hint(CAPTURE_HINTS.noNote);
+		view?.hint(leaf?.view instanceof MarkdownView ? CAPTURE_HINTS.reading : CAPTURE_HINTS.noNote);
 	}
 
 	// The open note a source came from, most recently used first.

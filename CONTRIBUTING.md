@@ -6,14 +6,14 @@ Node 22.18 or later (the unit tests run TypeScript directly).
 npm ci
 npm run build   # type-check, then main.js
 npm run lint    # eslint-plugin-obsidianmd: the rules the community directory's review uses
-npm test        # unit tests: the API client, the result copy, selection and Replace
+npm test        # unit tests: the API client, the result copy, the key check, selection and Replace
 ```
 
 `npm run dev` rebuilds `main.js` on every change. To try it in a vault, copy `main.js`, `manifest.json` and `styles.css` into `<vault>/.obsidian/plugins/ai-pen/` and reload Obsidian.
 
 ## In a real Obsidian
 
-`scripts/e2e.mjs` runs the plugin in the Obsidian desktop app you have installed, over the DevTools protocol: commands, the right-click menu, the results, Replace selection and a real Ctrl+Z, errors, the key, the settings tab, dark theme, and Obsidian's phone layout. It starts Obsidian with its own profile and a throwaway vault under `.e2e/`, so your vaults and settings aren't touched. API calls are answered in the page with canned runs; nothing reaches api.p3n.si.
+`scripts/e2e.mjs` runs the plugin in the Obsidian desktop app you have installed, over the DevTools protocol: commands, the right-click menu, the results, Replace selection and a real Ctrl+Z, Copy (with a stand-in clipboard), errors, picking a key, the settings tab, dark theme, a pop-out window, and Obsidian's phone layout. It starts Obsidian with its own profile and a throwaway vault under `.e2e/`, so your vaults and settings aren't touched. API calls are answered in the page with canned runs; nothing reaches api.p3n.si.
 
 ```bash
 npm run build && node scripts/e2e.mjs

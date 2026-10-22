@@ -27,6 +27,7 @@ export const CAPTURE_HINTS = {
 	none: 'Nothing is selected in the note. Select some text first.',
 	many: 'p3n works on one selection at a time. Select one passage.',
 	noNote: 'Open a note and select some text first.',
+	reading: 'This note is in reading view. Switch to editing view and select the text there.',
 };
 
 export function capture(editor: EditorLike, path: string, note: string): Capture {

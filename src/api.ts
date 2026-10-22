@@ -15,6 +15,10 @@ export const LINKS = {
 export const MAX_CHARS = { free: 5_000, key: 200_000 };
 // Detect refuses shorter text (counted in code points, after trimming).
 export const MIN_DETECT_CHARS = 40;
+// Humanize refuses fewer than eight words, counted as the API counts them: runs of the letters A to Z, ' and -,
+// so 2029 isn't a word and č splits one.
+export const MIN_REWRITE_WORDS = 8;
+export const rewriteWords = (t: string) => (t.match(/[A-Za-z][A-Za-z'-]*/g) ?? []).length;
 
 export type Skill = 'detect' | 'humanize';
 

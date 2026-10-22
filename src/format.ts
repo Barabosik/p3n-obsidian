@@ -1,6 +1,6 @@
 // What the results say: numbers, labels and copy, kept free of the DOM so the tests can read them.
 // The wording is the browser extension's and the Word add-in's, with "page" and "document" turned into "note".
-import { type ApiError, type DetectOutput, type HumanizeOutput, type Run, type Skill, LINKS, MAX_CHARS, MIN_DETECT_CHARS } from './api.ts';
+import { type ApiError, type DetectOutput, type HumanizeOutput, type Run, type Skill, LINKS, MAX_CHARS, MIN_DETECT_CHARS, MIN_REWRITE_WORDS, rewriteWords } from './api.ts';
 
 export type Tone = 'ai' | 'mid' | 'human';
 
@@ -12,16 +12,20 @@ export const clip = (t: string, n = 220) => (t && t.length > n ? t.slice(0, n - 
 export const limit = (hasKey: boolean) => (hasKey ? MAX_CHARS.key : MAX_CHARS.free);
 export const count = (n: number) => n.toLocaleString('en-US');
 
-// Why a selection can't be sent, or null when it can.
-export function refuse(skill: Skill, text: string, hasKey: boolean): string | null {
+// Why a selection can't be sent, or null when it can. The type picks the buttons under it (errorParts): too long
+// without a key gets Add an API key.
+export function refuse(skill: Skill, text: string, hasKey: boolean): { type: string; message: string } | null {
 	const n = text.length;
 	if (n > limit(hasKey)) {
 		return hasKey
-			? `That's ${count(n)} characters; the API takes up to ${count(MAX_CHARS.key)}. Select less.`
-			: `That's ${count(n)} characters. Without an API key p3n takes up to ${count(MAX_CHARS.free)}. Select less, or add a key.`;
+			? { type: 'too_long', message: `That's ${count(n)} characters; the API takes up to ${count(MAX_CHARS.key)}. Select less.` }
+			: { type: 'too_long_free', message: `That's ${count(n)} characters. Without an API key p3n takes up to ${count(MAX_CHARS.free)}. Select less, or add a key.` };
 	}
 	if (skill === 'detect' && [...text].length < MIN_DETECT_CHARS) {
-		return `Check needs at least ${MIN_DETECT_CHARS} characters, a sentence or two. Select more.`;
+		return { type: 'too_short', message: `Check needs at least ${MIN_DETECT_CHARS} characters, a sentence or two. Select more.` };
+	}
+	if (skill === 'humanize' && rewriteWords(text) < MIN_REWRITE_WORDS) {
+		return { type: 'too_short', message: 'Rewrite needs at least a sentence of eight words. Select more.' };
 	}
 	return null;
 }
@@ -83,10 +87,20 @@ export function fitRewrite(selected: string, rewrite: string): string {
 	return (selected.match(/^\s*/)?.[0] ?? '') + rewrite.trim() + (selected.match(/\s*$/)?.[0] ?? '');
 }
 
+// Links in a note: [[wikilinks]] and [text](target). Replace would drop any the rewrite left out.
+export const links = (t: string | null | undefined) => ((t || '').match(/\[\[[^\]\n]+\]\]|\[[^\]\n]*\]\([^)\n]*\)/g) ?? []).length;
+
 export function humanizeParts(o: HumanizeOutput, sent: string) {
 	const notes: { text: string; warn: boolean }[] = [];
 	if (words(o.text) / Math.max(1, words(sent)) < 0.6) {
 		notes.push({ warn: true, text: `Kept ${words(o.text)} of ${words(sent)} words. Most of this text was general statements with no facts in them, and those are what reads as AI. Add the specifics you meant (who, what, numbers) and run it again.` });
+	}
+	const had = links(sent);
+	const kept = links(o.text);
+	if (kept < had) {
+		notes.push({ warn: true, text: had === 1
+			? 'The rewrite dropped the link in your selection. Add it back after you replace it if you need it.'
+			: `The rewrite kept ${kept} of the ${had} links in your selection. Add back the ones you need after you replace it.` });
 	}
 	if (o.invented_blocked?.length) {
 		notes.push({ warn: false, text: `Kept as sent where a rewrite added ${o.invented_blocked.join(', ')}, which the text does not have.` });
@@ -123,6 +137,8 @@ export function errorParts(e: ApiError | Error): { lines: string[]; small: strin
 			return { lines: ["p3n didn't accept your API key. It may have been revoked."], small: null, actions: [{ kind: 'key', label: 'Change the key' }] };
 		case 'rate_limited':
 			return { lines: ['Too many requests at once. Wait a minute and try again.'], small: null, actions: [] };
+		case 'too_long_free':
+			return { lines: [e.message], small: null, actions: [{ kind: 'key', label: 'Add an API key' }] };
 		default:
 			return { lines: [e.message || 'Something went wrong.'], small: null, actions: [] };
 	}

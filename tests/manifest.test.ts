@@ -31,6 +31,8 @@ describe('manifest.json', () => {
 		assert.match(d, /^[A-Z]/);
 		assert.ok(d.endsWith('.'));
 		assert.match(d, /^[A-Za-z0-9\s.,!?'"-]+$/);
+		// The product line every p3n app uses; a rewrite isn't promised to read as human.
+		assert.doesNotMatch(d, /reads as human/i);
 	});
 
 	it('version is x.y.z and matches package.json and versions.json', () => {

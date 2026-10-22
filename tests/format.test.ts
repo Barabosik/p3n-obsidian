@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { ApiError, type DetectOutput, type HumanizeOutput } from '../src/api.ts';
-import { busyText, detectParts, errorParts, fitRewrite, headline, humanizeParts, metaLine, missingResult, quotaLine, refuse, sourceLine, tone, undoKey } from '../src/format.ts';
+import { ApiError, type DetectOutput, type HumanizeOutput, rewriteWords } from '../src/api.ts';
+import { busyText, detectParts, errorParts, fitRewrite, headline, humanizeParts, links, metaLine, missingResult, quotaLine, refuse, sourceLine, tone, undoKey } from '../src/format.ts';
 import { AI_TEXT, FIXTURES, HEADLINES, SHORT } from './fixtures.ts';
 
 describe('what a result says', () => {
@@ -49,6 +49,19 @@ describe('what a result says', () => {
 		assert.equal(h.notes[1]?.text, 'Kept as sent where a rewrite added a date, which the text does not have.');
 	});
 
+	it('rewrite: says so when it lost links from the selection', () => {
+		const o = FIXTURES.humanize.output as unknown as HumanizeOutput;
+		const sent = 'Our [[Q3 plan]] covers the launch for teams of every size, see [the brief](https://example.com/brief) for details.';
+		const notes = (text: string) => humanizeParts({ ...o, text }, sent).notes.map((n) => n.text);
+		assert.equal(links(sent), 2);
+		assert.deepEqual(notes('Our [[Q3 plan]] covers the launch for every team; [the brief](https://example.com/brief) has the details.'), []);
+		assert.deepEqual(notes('Our [[Q3 plan]] covers the launch for every team; the brief has the details for each of them.'), ['The rewrite kept 1 of the 2 links in your selection. Add back the ones you need after you replace it.']);
+		const one = humanizeParts({ ...o, text: 'The Q3 plan covers the launch for every team, large or small.' }, 'The [[Q3 plan]] covers the launch for teams of all sizes.');
+		assert.deepEqual(one.notes, [{ warn: true, text: 'The rewrite dropped the link in your selection. Add it back after you replace it if you need it.' }]);
+		// Brackets that aren't links don't count.
+		assert.equal(links('A list [x] and [y], a footnote[^1], an array a[0].'), 0);
+	});
+
 	it("a rewrite keeps the selection's own whitespace at each end, not the API's line break", () => {
 		assert.equal(fitRewrite('  Old text.\n', 'New text.\n'), '  New text.\n');
 		assert.equal(fitRewrite('Old text.', '\nNew text.\n'), 'New text.');
@@ -69,16 +82,34 @@ describe('what a result says', () => {
 });
 
 describe('before sending', () => {
-	it('refuses more than 5,000 characters without a key', () => {
-		assert.equal(refuse('detect', 'a'.repeat(5001), false), "That's 5,001 characters. Without an API key p3n takes up to 5,000. Select less, or add a key.");
+	it('refuses more than 5,000 characters without a key, with Add an API key', () => {
+		const free = refuse('detect', 'a'.repeat(5001), false);
+		assert.deepEqual(free, { type: 'too_long_free', message: "That's 5,001 characters. Without an API key p3n takes up to 5,000. Select less, or add a key." });
+		assert.deepEqual(errorParts(new ApiError(422, free?.type ?? '', free?.message ?? '')).actions, [{ kind: 'key', label: 'Add an API key' }]);
 		assert.equal(refuse('detect', 'a'.repeat(5001), true), null);
-		assert.equal(refuse('humanize', 'a'.repeat(200_001), true), "That's 200,001 characters; the API takes up to 200,000. Select less.");
+		const keyed = refuse('humanize', `${SHORT} `.repeat(1300), true);
+		assert.deepEqual(keyed, { type: 'too_long', message: "That's 211,900 characters; the API takes up to 200,000. Select less." });
+		// With a key there's nothing to add: no button.
+		assert.deepEqual(errorParts(new ApiError(422, keyed?.type ?? '', keyed?.message ?? '')).actions, []);
 	});
 
-	it('Check needs 40 characters; Rewrite takes less', () => {
-		assert.equal(refuse('detect', 'Too short to check.', false), 'Check needs at least 40 characters, a sentence or two. Select more.');
-		assert.equal(refuse('humanize', 'Too short to check.', false), null);
+	it('Check needs 40 characters', () => {
+		assert.deepEqual(refuse('detect', 'Too short to check.', false), { type: 'too_short', message: 'Check needs at least 40 characters, a sentence or two. Select more.' });
 		assert.equal(refuse('detect', AI_TEXT, false), null);
+	});
+
+	it('Rewrite needs a sentence of eight words, counted as the API counts them', () => {
+		const want = { type: 'too_short', message: 'Rewrite needs at least a sentence of eight words. Select more.' };
+		assert.deepEqual(refuse('humanize', 'Too short to rewrite.', false), want);
+		// Numbers aren't words; seven words and a year are still too few.
+		assert.deepEqual(refuse('humanize', 'We shipped the new release in March 2029.', false), want);
+		assert.equal(rewriteWords('We shipped the new release in March 2029.'), 7);
+		// Apostrophes and hyphens stay inside a word; a letter outside A to Z splits one.
+		assert.equal(rewriteWords("It's a well-known naïve idea"), 6);
+		assert.equal(refuse('humanize', 'We shipped the new release to every team in March.', false), null);
+		assert.equal(refuse('humanize', SHORT, false), null);
+		// Check takes a long sentence of few words.
+		assert.equal(refuse('detect', 'Supercalifragilisticexpialidocious, antidisestablishmentarianism.', false), null);
 	});
 
 	it('the source line and the busy line', () => {
