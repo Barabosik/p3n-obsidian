@@ -1,7 +1,7 @@
 {
 	"id": "ai-pen",
 	"name": "p3n",
-	"version": "0.1.1",
+	"version": "0.1.2",
 	"minAppVersion": "1.11.4",
 	"description": "Check selected text for AI writing, see the sentences that give it away, and rewrite it so it reads as human, with the p3n API.",
 	"author": "Nikita Andreiev",
