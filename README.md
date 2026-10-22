@@ -29,15 +29,15 @@
 
 ## How to use it
 
-1. Select text in a note.
-2. Run **p3n: Check for AI** or **p3n: Rewrite** from the command palette, or right-click the selection and choose **Check for AI with p3n** or **Rewrite with p3n**. The p3n view (the pen icon in the ribbon) has the same two buttons, which work on the note you were last in.
-3. After a rewrite, choose **Replace selection**, or **Copy**. Undo in the note puts your text back.
+1. Select text in a note. Check needs at least 40 characters; Rewrite needs a sentence of eight words or more.
+2. Run **p3n: Check for AI** or **p3n: Rewrite** from the command palette, or right-click the selection and choose **Check for AI with p3n** or **Rewrite with p3n**. The p3n view (the pen icon in the ribbon, or **p3n: Open results**) has the same two buttons. From the view, the buttons and the commands work on the note you were last in.
+3. After a rewrite, choose **Replace selection**, or **Copy**. Undo in the note puts your text back. If the rewrite left out a link from your selection, p3n says so before you replace.
 
 The commands have no hotkeys of their own; you can set some in **Settings → Hotkeys**.
 
 ## Free, or with a key
 
-You get 10 checks or rewrites an hour without an account, up to 5,000 characters each. For more, [sign up at p3n.si](https://p3n.si/register) (you get free credit), make a key on the [API keys](https://p3n.si/dashboard/keys) page, and add it in **Settings → p3n → API key**, or run **p3n: Set API key** from the command palette. The key is kept in Obsidian's keychain on this device, not in your notes or the plugin's `data.json`.
+You get 10 free calls an hour without an account (a check or a rewrite is one call), up to 5,000 characters each. For more, [sign up at p3n.si](https://p3n.si/register) (you get free credit), make a key on the [API keys](https://p3n.si/dashboard/keys) page, and add it in **Settings → p3n → API key**, or run **p3n: Set API key** from the command palette. p3n checks the key before it saves it, so a mistyped key never replaces one that works. The key is kept in Obsidian's keychain on this device, not in your notes or the plugin's `data.json`.
 
 ## Network use, accounts and payment
 
