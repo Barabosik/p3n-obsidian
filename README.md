@@ -1,10 +1,21 @@
-# p3n for Obsidian
+<p align="center">
+  <img src="docs/logo.png" width="88" alt="">
+</p>
 
-Select text in a note. See if it reads as AI-written, or rewrite it in place.
+<h1 align="center">p3n for Obsidian</h1>
 
-[p3n.si](https://p3n.si) · [Community directory](https://community.obsidian.md/plugins/ai-pen) · [Privacy](PRIVACY.md) · also for [Chrome and Firefox](https://github.com/Barabosik/p3n-chrome-extension), [Word and Excel](https://github.com/Barabosik/p3n-office-addin) and [Google Docs](https://github.com/Barabosik/p3n-google-docs-addon)
+<p align="center">
+  Select text in a note. See if it reads as AI-written, or rewrite it in place.
+</p>
 
-[![CI](https://github.com/Barabosik/p3n-obsidian/actions/workflows/ci.yml/badge.svg)](https://github.com/Barabosik/p3n-obsidian/actions/workflows/ci.yml)
+<p align="center">
+  <a href="https://community.obsidian.md/plugins/ai-pen">Obsidian Community plugins</a> · <a href="https://p3n.si">p3n.si</a> · <a href="https://nikita-andreiev.com/p3n/">All p3n apps</a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/Barabosik/p3n-obsidian/actions/workflows/ci.yml"><img src="https://github.com/Barabosik/p3n-obsidian/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://community.obsidian.md/plugins/ai-pen"><img src="https://img.shields.io/github/v/release/Barabosik/p3n-obsidian?label=Obsidian%20plugin" alt="Obsidian plugin version"></a>
+</p>
 
 ![Check for AI: a score, the reason, and the sentences that read as AI](docs/check.png)
 
@@ -26,7 +37,7 @@ The commands have no hotkeys of their own; you can set some in **Settings → Ho
 
 ## Free, or with a key
 
-Without an account you get 10 checks or rewrites an hour, up to 5,000 characters each. For more, [sign up at p3n.si](https://p3n.si/register) (you get free credit), create a key on the [API keys](https://p3n.si/dashboard/keys) page and add it in **Settings → p3n → API key**. The key is kept in Obsidian's keychain on this device, not in your notes or the plugin's `data.json`.
+You get 10 checks or rewrites an hour without an account, up to 5,000 characters each. For more, [sign up at p3n.si](https://p3n.si/register) (you get free credit), make a key on the [API keys](https://p3n.si/dashboard/keys) page, and add it in **Settings → p3n → API key**. The key is kept in Obsidian's keychain on this device, not in your notes or the plugin's `data.json`.
 
 ## Network use, accounts and payment
 
@@ -44,6 +55,10 @@ From Obsidian: **Settings → Community plugins → Browse → p3n**, then **Ins
 By hand: download `main.js`, `manifest.json` and `styles.css` from the [latest release](https://github.com/Barabosik/p3n-obsidian/releases/latest) into `<your vault>/.obsidian/plugins/ai-pen/`, then enable **p3n** in **Settings → Community plugins**.
 
 ![p3n on a phone](docs/mobile.png)
+
+## Other p3n apps
+
+p3n also works in [Chrome and Firefox](https://nikita-andreiev.com/p3n/#browser), [Word and Excel](https://nikita-andreiev.com/p3n/#office), [Google Docs](https://nikita-andreiev.com/p3n/#docs), [VS Code](https://nikita-andreiev.com/p3n/#vscode) and [Sublime Text](https://nikita-andreiev.com/p3n/#sublime). Install steps for each are on [nikita-andreiev.com/p3n](https://nikita-andreiev.com/p3n/).
 
 ## Develop
 
