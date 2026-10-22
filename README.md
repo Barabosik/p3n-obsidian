@@ -37,7 +37,7 @@ The commands have no hotkeys of their own; you can set some in **Settings → Ho
 
 ## Free, or with a key
 
-You get 10 checks or rewrites an hour without an account, up to 5,000 characters each. For more, [sign up at p3n.si](https://p3n.si/register) (you get free credit), make a key on the [API keys](https://p3n.si/dashboard/keys) page, and add it in **Settings → p3n → API key**. The key is kept in Obsidian's keychain on this device, not in your notes or the plugin's `data.json`.
+You get 10 checks or rewrites an hour without an account, up to 5,000 characters each. For more, [sign up at p3n.si](https://p3n.si/register) (you get free credit), make a key on the [API keys](https://p3n.si/dashboard/keys) page, and add it in **Settings → p3n → API key**, or run **p3n: Set API key** from the command palette. The key is kept in Obsidian's keychain on this device, not in your notes or the plugin's `data.json`.
 
 ## Network use, accounts and payment
 

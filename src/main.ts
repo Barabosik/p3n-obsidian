@@ -1,6 +1,6 @@
 import { type Editor, type MarkdownFileInfo, MarkdownView, Notice, Plugin, type WorkspaceLeaf } from 'obsidian';
 import { P3nClient, type Skill } from './api.ts';
-import { DEFAULT_SETTINGS, type P3nSettings, P3nSettingTab } from './settings.ts';
+import { DEFAULT_SETTINGS, KeyModal, type P3nSettings, P3nSettingTab } from './settings.ts';
 import { CAPTURE_HINTS, type Source, capture, findSentence, replace, select } from './source.ts';
 import { obsidianTransport } from './transport.ts';
 import { ICON, P3nView, VIEW_TYPE } from './view.ts';
@@ -32,6 +32,11 @@ export default class P3nPlugin extends Plugin {
 			id: 'open',
 			name: 'Open results',
 			callback: () => void this.activateView(),
+		});
+		this.addCommand({
+			id: 'set-api-key',
+			name: 'Set API key',
+			callback: () => this.openKey(),
 		});
 		this.addRibbonIcon(ICON, 'Open p3n', () => void this.activateView());
 
@@ -65,6 +70,11 @@ export default class P3nPlugin extends Plugin {
 	getKey(): string {
 		if (!this.settings.keySecret) return '';
 		return (this.app.secretStorage.getSecret(this.settings.keySecret) ?? '').trim();
+	}
+
+	// The API key window: the Set API key command, and the view's Add an API key buttons.
+	openKey() {
+		new KeyModal(this.app, this).open();
 	}
 
 	async activateView(): Promise<P3nView | null> {

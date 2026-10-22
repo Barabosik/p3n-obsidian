@@ -99,7 +99,7 @@ export class P3nSettingTab extends PluginSettingTab {
 	}
 }
 
-// The same key row in a window, for the Add an API key buttons in the results view.
+// The same key row in a window, for the Set API key command and the Add an API key buttons in the results view.
 export class KeyModal extends Modal {
 	plugin: P3nPlugin;
 

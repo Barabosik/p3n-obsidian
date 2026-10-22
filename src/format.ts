@@ -100,7 +100,7 @@ export function humanizeParts(o: HumanizeOutput, sent: string) {
 		notes,
 	};
 }
-export const HUMANIZE_NOTE = 'Humanize drops filler and general statements that carry no fact. Check that every claim you need is still there.';
+export const HUMANIZE_NOTE = 'The rewrite drops filler and general statements that carry no fact. Check that every claim you need is still there.';
 
 export type ErrorAction = { kind: 'link'; label: string; href: string; primary: boolean } | { kind: 'key'; label: string };
 
@@ -112,8 +112,8 @@ export function errorParts(e: ApiError | Error): { lines: string[]; small: strin
 			const err = e as ApiError;
 			const mins = err.retryAfter ? Math.max(1, Math.ceil(err.retryAfter / 60)) : null;
 			return {
-				lines: [`The free checks for this hour are used up${mins ? `; more in about ${mins} min` : ''}.`],
-				small: 'Sign up for free credit and an API key, then add the key here to keep going.',
+				lines: [`The free calls for this hour are used up${mins ? `; more in about ${mins} min` : ''}.`],
+				small: 'Sign up at p3n.si for free credit, then create an API key and add it here to keep going.',
 				actions: [{ kind: 'link', label: 'Sign up', href: err.signupUrl || LINKS.signup, primary: true }, { kind: 'key', label: 'Add an API key' }],
 			};
 		}

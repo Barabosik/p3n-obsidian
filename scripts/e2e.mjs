@@ -205,6 +205,10 @@ const scoreSettled = () => {
 	return !!n && !!sr && n.textContent === sr.textContent && !!document.querySelector('.p3n-view .p3n-busy')?.style.display.includes('none');
 };
 const idle = () => document.querySelector('.p3n-view .p3n-busy')?.style.display.includes('none') && !!document.querySelector('.p3n-view .p3n-result')?.textContent.trim();
+const keyModal = () => {
+	const m = document.querySelector('.modal.p3n-key-modal');
+	return m ? { title: m.querySelector('.modal-title')?.textContent ?? '', text: m.innerText } : null;
+};
 const clickButton = (label) => {
 	const b = [...document.querySelectorAll('.p3n-view button, .p3n-view a.p3n-button')].find((x) => x.textContent.trim() === label);
 	if (!b) return false;
@@ -289,10 +293,11 @@ async function main() {
 		if (!LIVE) await cdp.ev(installMock, FIXTURES, ID);
 
 		await check('boot: commands named as in the palette, no default hotkeys', async () => {
-			const cmds = await cdp.ev((id) => ['check', 'rewrite', 'open'].map((c) => window.app.commands.findCommand(`${id}:${c}`)).map((c) => c && { name: c.name, hotkeys: c.hotkeys ?? [] }), ID);
+			const cmds = await cdp.ev((id) => ['check', 'rewrite', 'open', 'set-api-key'].map((c) => window.app.commands.findCommand(`${id}:${c}`)).map((c) => c && { name: c.name, hotkeys: c.hotkeys ?? [] }), ID);
 			assert(cmds[0]?.name === 'p3n: Check for AI', `check is "${cmds[0]?.name}"`);
 			assert(cmds[1]?.name === 'p3n: Rewrite', `rewrite is "${cmds[1]?.name}"`);
 			assert(cmds[2]?.name === 'p3n: Open results', `open is "${cmds[2]?.name}"`);
+			assert(cmds[3]?.name === 'p3n: Set API key', `set-api-key is "${cmds[3]?.name}"`);
 			assert(cmds.every((c) => c.hotkeys.length === 0), 'a command has a default hotkey');
 		});
 
@@ -360,7 +365,7 @@ async function main() {
 				throw new Error(`${e.message.slice(0, 40)}: ${JSON.stringify(await cdp.ev(() => ({ num: document.querySelector('.p3n-view .p3n-num')?.textContent, sr: document.querySelector('.p3n-view .p3n-sr')?.textContent, busy: document.querySelector('.p3n-view .p3n-busy')?.style.display, hidden: document.hidden, vis: document.visibilityState, focus: document.hasFocus() })))}`);
 			});
 			const t = await cdp.ev(resultText);
-			for (const want of ['No longer reads as AI', 'Detector model: Likely human-written', '95% →', '1%', 'AI class', REWRITE, 'Kept 7 of 23 words.', 'Humanize drops filler', 'humanize-v1.3']) {
+			for (const want of ['No longer reads as AI', 'Detector model: Likely human-written', '95% →', '1%', 'AI class', REWRITE, 'Kept 7 of 23 words.', 'The rewrite drops filler', 'humanize-v1.3']) {
 				assert(t.includes(want), `missing "${want}"`);
 			}
 			assert(await cdp.ev(() => document.querySelector('.p3n-view .p3n-rewrite').textContent) === REWRITE, 'rewrite box text');
@@ -461,10 +466,17 @@ async function main() {
 			await run(cdp, 'check');
 			await cdp.waitFor(idle);
 			const t = await cdp.ev(resultText);
-			assert(t.includes('The free checks for this hour are used up; more in about 10 min.'), t);
+			assert(t.includes('The free calls for this hour are used up; more in about 10 min.'), t);
+			assert(t.includes('Sign up at p3n.si for free credit, then create an API key and add it here to keep going.'), t);
 			const links = await cdp.ev(() => [...document.querySelectorAll('.p3n-view .p3n-error a, .p3n-view .p3n-error button')].map((a) => `${a.textContent}|${a.getAttribute('href') ?? ''}`));
 			assert(JSON.stringify(links) === JSON.stringify(['Sign up|https://p3n.si/register', 'Add an API key|']), JSON.stringify(links));
 			await cdp.shot('free-limit');
+			assert(await cdp.ev(clickButton, 'Add an API key'), 'no Add an API key');
+			const m = await cdp.waitFor(keyModal);
+			assert(m.title === 'API key' && m.text.includes('sign up at p3n.si'), JSON.stringify(m));
+			// Escape: the close button's class differs between Obsidian versions.
+			await cdp.key('Escape', 'Escape', 27);
+			await cdp.waitFor(() => !document.querySelector('.modal.p3n-key-modal'));
 		});
 
 		const ODD = [
@@ -527,10 +539,21 @@ async function main() {
 			await cdp.ev(() => window.app.commands.executeCommandById('command-palette:open'));
 			await cdp.waitFor(() => document.querySelector('.prompt-input'));
 			await cdp.send('Input.insertText', { text: 'p3n' });
-			const items = await cdp.waitFor(() => { const t = [...document.querySelectorAll('.prompt .suggestion-item')].map((e) => e.innerText.trim()); return t.length >= 3 && t; });
-			for (const want of ['Check for AI', 'Rewrite', 'Open results']) assert(items.some((i) => /^p3n:?\s*/.test(i) && i.replace(/^p3n:?\s*/, '') === want), `${want} not in ${JSON.stringify(items)}`);
+			const items = await cdp.waitFor(() => { const t = [...document.querySelectorAll('.prompt .suggestion-item')].map((e) => e.innerText.trim()); return t.length >= 4 && t; });
+			for (const want of ['Check for AI', 'Rewrite', 'Open results', 'Set API key']) assert(items.some((i) => /^p3n:?\s*/.test(i) && i.replace(/^p3n:?\s*/, '') === want), `${want} not in ${JSON.stringify(items)}`);
 			await cdp.shot('palette');
 			await cdp.key('Escape', 'Escape', 27);
+		});
+
+		await check('key: Set API key opens the API key window', async () => {
+			await cdp.waitFor(() => !document.querySelector('.prompt'));
+			await cdp.ev((id) => window.app.commands.executeCommandById(`${id}:set-api-key`), ID);
+			const m = await cdp.waitFor(keyModal);
+			assert(m.title === 'API key', m.title);
+			for (const want of ['10 calls an hour', 'sign up at p3n.si', 'API keys', "Obsidian's keychain", 'Remove key']) assert(m.text.includes(want), `missing "${want}" in ${m.text}`);
+			await cdp.shot('key-window');
+			await cdp.key('Escape', 'Escape', 27);
+			await cdp.waitFor(() => !document.querySelector('.modal.p3n-key-modal'));
 		});
 
 		await check('key: a key from secret storage is sent; balance shown; a wrong one is named', async () => {

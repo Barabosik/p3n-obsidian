@@ -91,7 +91,8 @@ describe('before sending', () => {
 describe('errors and the account line', () => {
 	it('free limit: when more come, Sign up and Add an API key', () => {
 		const p = errorParts(new ApiError(429, 'free_limit', 'x', { retryAfter: 590, signupUrl: null }));
-		assert.deepEqual(p.lines, ['The free checks for this hour are used up; more in about 10 min.']);
+		assert.deepEqual(p.lines, ['The free calls for this hour are used up; more in about 10 min.']);
+		assert.equal(p.small, 'Sign up at p3n.si for free credit, then create an API key and add it here to keep going.');
 		assert.deepEqual(p.actions.map((a) => a.label), ['Sign up', 'Add an API key']);
 		assert.equal(p.actions[0]?.kind === 'link' && p.actions[0].href, 'https://p3n.si/register');
 	});

@@ -2,7 +2,6 @@ import { ItemView, Platform, type WorkspaceLeaf } from 'obsidian';
 import { ApiError, type DetectOutput, type HumanizeOutput, type Run, type Skill, isAbort } from './api.ts';
 import { DETECT_NOTE, HUMANIZE_NOTE, MISSING_RESULT, balanceLine, busyText, clip, detectParts, errorParts, fitRewrite, humanizeParts, metaLine, missingResult, quotaLine, refuse, sourceLine, type Tone, tone, undoKey } from './format.ts';
 import type P3nPlugin from './main.ts';
-import { KeyModal } from './settings.ts';
 import type { Source } from './source.ts';
 
 export const VIEW_TYPE = 'p3n';
@@ -71,17 +70,13 @@ export class P3nView extends ItemView {
 		const footer = root.createDiv({ cls: 'p3n-footer p3n-row' });
 		this.quotaEl = footer.createSpan({ cls: 'p3n-small p3n-muted' });
 		this.keyBtn = footer.createEl('button', { cls: 'p3n-link p3n-push p3n-small' });
-		this.keyBtn.addEventListener('click', () => this.openKey());
+		this.keyBtn.addEventListener('click', () => this.plugin.openKey());
 		this.refreshAccount();
 	}
 
 	async onClose() {
 		this.controller?.abort();
 		this.stopTimer();
-	}
-
-	openKey() {
-		new KeyModal(this.app, this.plugin).open();
 	}
 
 	hint(msg: string) {
@@ -247,7 +242,7 @@ export class P3nView extends ItemView {
 			const row = box.createDiv({ cls: 'p3n-row' });
 			for (const a of p.actions) {
 				if (a.kind === 'link') row.createEl('a', { cls: `p3n-button${a.primary ? ' mod-cta' : ''}`, text: a.label, href: a.href });
-				else row.createEl('button', { text: a.label }).addEventListener('click', () => this.openKey());
+				else row.createEl('button', { text: a.label }).addEventListener('click', () => this.plugin.openKey());
 			}
 		}
 		stagger(box);
