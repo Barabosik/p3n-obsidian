@@ -20,6 +20,7 @@ export class P3nView extends ItemView {
 	private resultEl!: HTMLElement;
 	private quotaEl!: HTMLElement;
 	private keyBtn!: HTMLButtonElement;
+	private clearRow: HTMLElement | null = null;
 	private buttons: HTMLButtonElement[] = [];
 	private controller: AbortController | null = null;
 	private timer: number | null = null;
@@ -92,6 +93,7 @@ export class P3nView extends ItemView {
 	async start(skill: Skill, source: Source, options?: Record<string, unknown>) {
 		const text = source.text.trim();
 		this.controller?.abort();
+		this.plugin.clearHighlights();
 		this.hint('');
 		const key = this.plugin.getKey();
 		this.sourceEl.setText(sourceLine(source.note, text.length, !!key));
@@ -186,7 +188,22 @@ export class P3nView extends ItemView {
 				li.createEl('q', { text: clip(h.sentence) });
 			}
 		}
+		const marked = this.plugin.highlight(source, [
+			...d.sentences.map((s) => ({ text: s.text, kind: 'sentence' as const, why: s.why ?? '' })),
+			...d.hits.map((h) => ({ text: h.sentence, kind: 'hit' as const, why: h.rules })),
+		]);
+		if (marked) {
+			this.clearRow = box.createDiv({ cls: 'p3n-row' });
+			this.clearRow.createEl('button', { cls: 'p3n-link p3n-small', text: 'Clear highlights' })
+				.addEventListener('click', () => this.plugin.clearHighlights());
+		}
 		box.createEl('p', { cls: 'p3n-small p3n-muted', text: DETECT_NOTE });
+	}
+
+	// The highlights went (Clear highlights, an edit, the next run): so does their button.
+	highlightsCleared() {
+		this.clearRow?.remove();
+		this.clearRow = null;
 	}
 
 	private renderHumanize(box: HTMLElement, o: HumanizeOutput, sent: string, source: Source) {

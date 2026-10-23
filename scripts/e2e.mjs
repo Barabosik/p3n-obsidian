@@ -177,6 +177,7 @@ function installMock(fixtures, id) {
 		m.requests.push(req);
 		const json = (status, body) => ({ status, headers: { 'content-type': 'application/json', 'x-free-remaining': '9' }, text: JSON.stringify(body) });
 		const next = m.queue.shift();
+		if (next?.delay) await new Promise((r) => setTimeout(r, next.delay));
 		if (next?.drop) throw new Error('net::ERR_CONNECTION_RESET');
 		if (next?.html) return { status: next.status, headers: { 'content-type': 'text/html' }, text: next.html };
 		if (next) return json(next.status ?? 200, next.body);
@@ -279,6 +280,9 @@ async function clickSite(where) {
 }
 // The settings window's title when the settings have a window of their own (Obsidian 1.13 and later), else null.
 const settingsWindow = () => { const d = window.app.setting.activeTab?.containerEl.doc; return d && d !== document ? d.title : null; };
+// Check's highlights in the note: kind, the text marked and its tooltip.
+const noteMarks = () => [...document.querySelectorAll('.workspace-leaf-content[data-type="markdown"] .cm-content .p3n-mark')]
+	.map((e) => `${e.classList.contains('p3n-mark-hit') ? 'hit' : 'sentence'}|${e.textContent}|${e.title}`);
 const SITE_OPENED = JSON.stringify({ prevented: true, calls: [['https://p3n.si/', '_external']], seen: [] });
 const SITE_LINK = 'p3n.si ↗|https://p3n.si/|Open p3n.si in your browser|↗';
 
@@ -314,6 +318,17 @@ const FIXTURES = {
 		output: { version: 'humanize-v1.3', model: 'haiku', text: 'This transition helps teams of all sizes.\n', ai_before: 0.95, ai_after: 0.01, label_after: 'human', passes: true, invented_blocked: [] } },
 };
 const REWRITE = 'This transition helps teams of all sizes.';
+// A check of the first two paragraphs: a listed sentence, a pattern hit written with other case and spacing,
+// and one that isn't in the note.
+const MARKED = `${AI_TEXT}\n\n${SHORT}`;
+const MARK_ANSWER = { ...FIXTURES.detect, output: { ...FIXTURES.detect.output, examples: [
+	{ sentence: SHORT.toUpperCase().replace(' THIS ', '   THIS\n'), rules: [{ name: 'Tapestry' }] },
+	{ sentence: 'Not in the note at all.', rules: [{ name: 'Nowhere' }] },
+] } };
+const MARKS = [
+	`sentence|${AI_TEXT.split('. ')[0]}|A stock opening with a vague claim.`,
+	`hit|${SHORT.slice(0, -1)}|Tapestry`,
+];
 
 async function main() {
 	assert(existsSync(path.join(ROOT, 'main.js')), 'main.js is missing: run npm run build first');
@@ -452,6 +467,54 @@ async function main() {
 			assert(await cdp.ev(() => window.__site.isConnected && document.querySelector('.p3n-view .p3n-footer a.p3n-site') === window.__site), 'the link was replaced or dropped');
 			const opened = await cdp.ev(clickSite, 'view');
 			assert(opened === SITE_OPENED, opened);
+		});
+
+		await check('highlights: the sentences marked in the checked text; cleared by the button, an edit, the command and the next run', async () => {
+			const offered = () => cdp.ev((id) => window.app.commands.listCommands().some((c) => c.id === `${id}:clear-highlights`), ID);
+			const button = () => cdp.ev(() => [...document.querySelectorAll('.p3n-view button')].some((b) => b.textContent === 'Clear highlights'));
+			const marked = async () => {
+				await cdp.ev((body) => window.__p3n.queue.push({ status: 200, body }), MARK_ANSWER);
+				assert(await cdp.ev(selectInNote, MARKED), 'could not select');
+				await run(cdp, 'check');
+				await cdp.waitFor(idle);
+				await cdp.waitFor(() => !!document.querySelector('.cm-content .p3n-mark'), [], 5000).catch(() => null);
+				const m = await cdp.ev(noteMarks);
+				assert(JSON.stringify(m) === JSON.stringify(MARKS), JSON.stringify(m));
+			};
+			const cleared = async (how) => {
+				await cdp.waitFor(() => !document.querySelector('.cm-content .p3n-mark')).catch(() => { throw new Error(`still marked after ${how}`); });
+				assert(!(await button()), `the button is still there after ${how}`);
+				assert(!(await offered()), `the command is still offered after ${how}`);
+			};
+			await marked();
+			assert(await button() && await offered(), 'no Clear highlights button or command');
+			await cdp.ev(() => window.__ed().setCursor({ line: 0, ch: 0 }));
+			await cdp.shot('highlights-light');
+			assert(await cdp.ev(clickButton, 'Clear highlights'), 'no Clear highlights');
+			await cleared('the button');
+			await marked();
+			await cdp.ev(() => window.__ed().replaceRange('x', { line: 0, ch: 0 }));
+			await cleared('an edit');
+			await cdp.ev((note) => window.__ed().setValue(note), NOTE);
+			await marked();
+			await cdp.ev((id) => window.app.commands.executeCommandById(`${id}:clear-highlights`), ID);
+			await cleared('the command');
+			// The next check clears them, and marks nothing outside its own selection.
+			await marked();
+			await cdp.ev((body) => window.__p3n.queue.push({ status: 200, body }), FIXTURES.detect);
+			await cdp.ev(selectInNote, SHORT);
+			await run(cdp, 'check');
+			await cdp.waitFor(idle);
+			await cleared('the next check');
+			// An edit while the check runs: nothing is marked.
+			await cdp.ev((body) => window.__p3n.queue.push({ status: 200, body, delay: 1500 }), MARK_ANSWER);
+			await cdp.ev(selectInNote, MARKED);
+			await run(cdp, 'check');
+			await cdp.ev(() => window.__ed().replaceRange('Intro: ', { line: 4, ch: 0 }));
+			await cdp.waitFor(idle);
+			await sleep(300);
+			assert(!(await cdp.ev(() => !!document.querySelector('.cm-content .p3n-mark'))), 'marked after the note changed');
+			await cdp.ev((note) => window.__ed().setValue(note), NOTE);
 		});
 
 		await check('rewrite: headline, scores, rewrite without the trailing line break', async () => {
@@ -866,6 +929,13 @@ async function main() {
 			await run(cdp, 'check');
 			await cdp.waitFor(idle);
 			await cdp.shot('check-dark');
+			await cdp.ev((body) => window.__p3n.queue.push({ status: 200, body }), MARK_ANSWER);
+			await cdp.ev(selectInNote, MARKED);
+			await run(cdp, 'check');
+			await cdp.waitFor(idle);
+			assert(JSON.stringify(await cdp.ev(noteMarks)) === JSON.stringify(MARKS), 'not marked in dark');
+			await cdp.ev(() => window.__ed().setCursor({ line: 0, ch: 0 }));
+			await cdp.shot('highlights-dark');
 			await cdp.ev((id) => { window.app.setting.open(); window.app.setting.openTabById(id); }, ID);
 			await cdp.waitFor((id) => window.app.setting.activeTab?.id === id && window.app.setting.activeTab.containerEl.innerText.includes('p3n.si'), [ID]);
 			assert(await cdp.ev(siteLink, 'settings') === SITE_LINK, 'no p3n.si line in the settings');

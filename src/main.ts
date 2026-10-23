@@ -1,5 +1,9 @@
-import { type Editor, type MarkdownFileInfo, MarkdownView, Notice, Plugin, type WorkspaceLeaf } from 'obsidian';
+import type { Text } from '@codemirror/state';
+import type { EditorView } from '@codemirror/view';
+import { type Editor, type MarkdownFileInfo, MarkdownView, Notice, Plugin, type WorkspaceLeaf, editorInfoField } from 'obsidian';
 import { P3nClient, type Skill } from './api.ts';
+import { hasMarks, highlightExtension, setMarks } from './highlight.ts';
+import { type MarkWanted, findMarks } from './marks.ts';
 import { DEFAULT_SETTINGS, KeyModal, type P3nSettings, P3nSettingTab } from './settings.ts';
 import { CAPTURE_HINTS, type Source, capture, findSentence, replace, select } from './source.ts';
 import { obsidianTransport } from './transport.ts';
@@ -14,6 +18,11 @@ export default class P3nPlugin extends Plugin {
 	client!: P3nClient;
 	// Free calls left this hour without a key, from the API's last answer (X-Free-Remaining).
 	free: number | null = null;
+	// The open editors, the one with Check's highlights, and for each checked selection its editor and that
+	// editor's text when it was sent.
+	private editors = new Set<EditorView>();
+	private marked: EditorView | null = null;
+	private checked = new WeakMap<Source, { cm: EditorView; doc: Text }>();
 
 	async onload() {
 		await this.loadSettings();
@@ -43,6 +52,22 @@ export default class P3nPlugin extends Plugin {
 			name: 'Set API key',
 			callback: () => this.openKey(),
 		});
+		this.addCommand({
+			id: 'clear-highlights',
+			name: 'Clear highlights',
+			checkCallback: (checking) => {
+				if (!this.marked || !hasMarks(this.marked)) return false;
+				if (!checking) this.clearHighlights();
+				return true;
+			},
+		});
+		this.registerEditorExtension(highlightExtension(this.editors, (cm) => {
+			if (cm !== this.marked) return;
+			this.marked = null;
+			for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
+				if (leaf.view instanceof P3nView) leaf.view.highlightsCleared();
+			}
+		}));
 		this.addRibbonIcon(ICON, 'Open p3n', () => void this.activateView());
 
 		this.registerEvent(this.app.workspace.on('editor-menu', (menu, editor, ctx) => {
@@ -110,6 +135,8 @@ export default class P3nPlugin extends Plugin {
 		if (!file) return view.hint(CAPTURE_HINTS.noNote);
 		const got = capture(editor, file.path, file.basename);
 		if (!got.ok) return view.hint(CAPTURE_HINTS[got.reason]);
+		const cm = [...this.editors].find((v) => v.state.field(editorInfoField, false)?.editor === editor);
+		if (cm) this.checked.set(got.source, { cm, doc: cm.state.doc });
 		await view.start(skill, got.source);
 	}
 
@@ -152,6 +179,25 @@ export default class P3nPlugin extends Plugin {
 		// The same rewrite can't go in twice: the selection is now the rewrite.
 		Object.assign(source, { text: rewrite, from: done.from, to: done.to });
 		return 'ok';
+	}
+
+	// Marks Check's sentences in the checked selection, unless the note changed while it ran. Returns how many.
+	highlight(source: Source, wanted: MarkWanted[]): number {
+		const at = this.checked.get(source);
+		if (!at || at.cm.state.doc !== at.doc || !this.editors.has(at.cm)) return 0;
+		const marks = findMarks(source.text, wanted).map((m) => ({ ...m, from: m.from + source.from, to: m.to + source.from }));
+		if (!marks.length) return 0;
+		this.clearHighlights();
+		at.cm.dispatch({ effects: setMarks.of(marks) });
+		this.marked = at.cm;
+		return marks.length;
+	}
+
+	// The marks go; the editor's update listener then tells the views (as after an edit).
+	clearHighlights() {
+		const cm = this.marked;
+		if (cm && this.editors.has(cm)) cm.dispatch({ effects: setMarks.of([]) });
+		this.marked = null;
 	}
 
 	showInNote(source: Source, sentence: string) {

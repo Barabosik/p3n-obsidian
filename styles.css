@@ -355,3 +355,19 @@
 		background-size: 100% 100%;
 	}
 }
+
+/* Check's sentences in the note: the listed ones in the AI colour, tint and solid underline; pattern hits not
+   already listed lighter, with a dotted underline. The theme's own red and orange, so light and dark both read. */
+.p3n-mark-sentence {
+	background-color: rgba(var(--color-red-rgb), 0.16);
+	text-decoration: underline solid var(--color-red);
+	text-decoration-thickness: 2px;
+	text-underline-offset: 3px;
+}
+
+.p3n-mark-hit {
+	background-color: rgba(var(--color-orange-rgb), 0.1);
+	text-decoration: underline dotted var(--color-orange);
+	text-decoration-thickness: 2px;
+	text-underline-offset: 3px;
+}
