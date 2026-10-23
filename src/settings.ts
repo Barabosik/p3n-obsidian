@@ -2,6 +2,7 @@ import { type App, Modal, PluginSettingTab, SecretComponent, Setting, type Setti
 import { LINKS } from './api.ts';
 import { KEY_PATTERN, checkKey } from './key.ts';
 import type P3nPlugin from './main.ts';
+import { siteLink } from './view.ts';
 
 export interface P3nSettings {
 	// The name of the secret in Obsidian's secret storage that holds the API key, not the key itself.
@@ -19,6 +20,14 @@ function keyDesc(): DocumentFragment {
 		f.appendText(' (you get free credit), create a key on the ');
 		f.createEl('a', { text: 'API keys', href: LINKS.keys });
 		f.appendText(" page and add it here; it's saved once p3n accepts it. The key is kept in Obsidian's keychain on this device, not in your notes or the plugin's data.json.");
+	});
+}
+
+// Under the key: pricing, the balance and the docs are on p3n.si, not in Obsidian.
+function siteLine(): DocumentFragment {
+	return createFragment((f) => {
+		f.appendText('Pricing, your balance and the docs: ');
+		siteLink(f);
 	});
 }
 
@@ -98,6 +107,7 @@ export class P3nSettingTab extends PluginSettingTab {
 	getSettingDefinitions(): SettingDefinitionItem[] {
 		return [
 			{ name: 'API key', desc: keyDesc(), render: (setting) => keyRow(setting.setName('API key').setDesc(keyDesc()), this.plugin) },
+			{ name: 'Pricing, your balance and the docs', aliases: ['p3n.si'], render: (setting) => { setting.setName(siteLine()); } },
 			{ type: 'group', heading: 'Privacy', items: [{ name: 'What p3n sends', desc: PRIVACY }] },
 		];
 	}
@@ -106,6 +116,7 @@ export class P3nSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 		keyRow(new Setting(containerEl).setName('API key').setDesc(keyDesc()), this.plugin);
+		new Setting(containerEl).setName(siteLine());
 		new Setting(containerEl).setName('Privacy').setHeading();
 		new Setting(containerEl).setName('What p3n sends').setDesc(PRIVACY);
 	}

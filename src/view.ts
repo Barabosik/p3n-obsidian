@@ -1,5 +1,5 @@
 import { ItemView, Platform, type WorkspaceLeaf } from 'obsidian';
-import { ApiError, type DetectOutput, type HumanizeOutput, type Run, type Skill, isAbort } from './api.ts';
+import { ApiError, type DetectOutput, type HumanizeOutput, LINKS, type Run, type Skill, isAbort } from './api.ts';
 import { DETECT_NOTE, HUMANIZE_NOTE, MISSING_RESULT, balanceLine, busyText, clip, detectParts, errorParts, fitRewrite, humanizeParts, metaLine, missingResult, quotaLine, refuse, sourceLine, type Tone, tone, undoKey } from './format.ts';
 import type P3nPlugin from './main.ts';
 import type { Source } from './source.ts';
@@ -69,7 +69,10 @@ export class P3nView extends ItemView {
 
 		const footer = root.createDiv({ cls: 'p3n-footer p3n-row' });
 		this.quotaEl = footer.createSpan({ cls: 'p3n-small p3n-muted' });
-		this.keyBtn = footer.createEl('button', { cls: 'p3n-link p3n-push p3n-small' });
+		// Next to the quota line, not in it: refreshAccount() replaces its text.
+		const links = footer.createDiv({ cls: 'p3n-footer-links p3n-push' });
+		siteLink(links, 'p3n-link p3n-small');
+		this.keyBtn = links.createEl('button', { cls: 'p3n-link p3n-small' });
 		this.keyBtn.addEventListener('click', () => this.plugin.openKey());
 		void this.refreshAccount();
 	}
@@ -271,6 +274,21 @@ export class P3nView extends ItemView {
 			this.quotaEl.setText(e instanceof ApiError && e.type === 'unauthorized' ? "Your API key wasn't accepted. Change it under API key." : '');
 		}
 	}
+}
+
+// The link to p3n.si, in the view's footer and in the settings. The arrow is hidden from screen readers, so it
+// reads "p3n.si". On desktop, Obsidian's Web viewer (when it's on) opens links inside Obsidian; "_external" is
+// Obsidian's own way to send one to the browser. On mobile the link opens in the browser as it is.
+export function siteLink(parent: HTMLElement | DocumentFragment, cls = ''): HTMLAnchorElement {
+	const a = parent.createEl('a', { cls: `p3n-site ${cls}`.trim(), href: LINKS.site, attr: { title: 'Open p3n.si in your browser' } });
+	a.appendText('p3n.si ');
+	a.createSpan({ text: '↗', attr: { 'aria-hidden': 'true' } });
+	a.addEventListener('click', (e) => {
+		if (!Platform.isDesktopApp) return;
+		e.preventDefault();
+		a.win.open(a.href, '_external');
+	});
+	return a;
 }
 
 // Moves keyboard focus to something that isn't focusable by itself (a result, a status line).

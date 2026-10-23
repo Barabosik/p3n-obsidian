@@ -5,6 +5,7 @@
 export const API = 'https://api.p3n.si';
 export const SITE = 'https://p3n.si';
 export const LINKS = {
+	site: `${SITE}/`,
 	keys: `${SITE}/dashboard/keys`,
 	billing: `${SITE}/dashboard/billing`,
 	signup: `${SITE}/register`,

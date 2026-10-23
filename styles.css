@@ -37,7 +37,8 @@
 	margin-inline-start: auto;
 }
 
-.p3n-view button.p3n-link {
+.p3n-view button.p3n-link,
+.p3n-view a.p3n-link {
 	background: none;
 	box-shadow: none;
 	border: none;
@@ -49,7 +50,8 @@
 	text-underline-offset: 2px;
 }
 
-.p3n-view button.p3n-link:hover {
+.p3n-view button.p3n-link:hover,
+.p3n-view a.p3n-link:hover {
 	color: var(--text-accent-hover);
 }
 
@@ -303,6 +305,19 @@
 .p3n-footer {
 	padding-top: var(--size-4-2);
 	border-top: 1px solid var(--background-modifier-border);
+}
+
+/* p3n.si and the key, together at the end of the footer: they wrap as one under a long quota line. */
+.p3n-footer-links {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--size-4-2) var(--size-4-4);
+}
+
+/* The link to p3n.si, in the footer and the settings: "p3n.si ↗" stays on one line. */
+.p3n-site {
+	white-space: nowrap;
 }
 
 .p3n-key-status:empty {

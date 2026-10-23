@@ -144,11 +144,24 @@ class Cdp {
 		await this.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button, clickCount: 1 });
 	}
 
-	async shot(name) {
+	// `clip`: a part of the page, in CSS pixels, at `clip.scale`. `title`: another window's page, found by its title
+	// (Obsidian 1.13 and later open the settings in a window of their own).
+	async shot(name, { clip, title } = {}) {
 		if (process.env.SHOTS !== '1') return;
 		await sleep(1200); // let the result's motion finish
-		const { data } = await this.send('Page.captureScreenshot', { format: 'png' });
-		writeFileSync(path.join(SHOTS, `${name}.png`), Buffer.from(data, 'base64'));
+		let page = this;
+		const other = title && (await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json()).find((t) => t.type === 'page' && t.title === title);
+		if (other) {
+			const ws = new WebSocket(other.webSocketDebuggerUrl);
+			await new Promise((resolve, reject) => { ws.onopen = resolve; ws.onerror = reject; });
+			page = new Cdp(ws);
+		}
+		try {
+			const { data } = await page.send('Page.captureScreenshot', { format: 'png', ...(clip ? { clip: { scale: 1, ...clip } } : {}) });
+			writeFileSync(path.join(SHOTS, `${name}.png`), Buffer.from(data, 'base64'));
+		} finally {
+			if (page !== this) page.ws.close();
+		}
 	}
 }
 
@@ -233,6 +246,41 @@ async function pickSecret(name) {
 	return true;
 }
 const keyStatus = () => document.querySelector('.modal.p3n-key-modal .p3n-key-status')?.textContent ?? null;
+// The p3n.si link in the view's footer or in the settings tab: its text, address, tooltip and the arrow screen
+// readers skip.
+const siteLink = (where) => {
+	const root = where === 'settings' ? window.app.setting.activeTab?.containerEl : document.querySelector('.p3n-view .p3n-footer');
+	const a = root?.querySelector('a.p3n-site');
+	return a ? `${a.textContent}|${a.getAttribute('href')}|${a.title}|${a.querySelector('[aria-hidden="true"]')?.textContent ?? ''}` : null;
+};
+// Clicks the p3n.si link with its window's open() stubbed, so nothing reaches the browser. The 'open-url' guard
+// catches a plain link's way out: Obsidian's Web viewer, when it's on, takes it there and opens it inside Obsidian.
+async function clickSite(where) {
+	const root = where === 'settings' ? window.app.setting.activeTab?.containerEl : document.querySelector('.p3n-view .p3n-footer');
+	const a = root?.querySelector('a.p3n-site');
+	if (!a) return 'no link';
+	const w = a.win;
+	const calls = [];
+	const seen = [];
+	const guard = (e) => { seen.push(e.detail?.url); e.preventDefault(); };
+	for (const x of new Set([window, w])) x.addEventListener('open-url', guard);
+	const open = w.open;
+	w.open = (...args) => { calls.push(args); return null; };
+	const ev = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 });
+	try {
+		a.dispatchEvent(ev);
+	} finally {
+		w.open = open;
+	}
+	// A navigation would come back from the main process as 'open-url' a moment later.
+	await new Promise((r) => setTimeout(r, 1000));
+	for (const x of new Set([window, w])) x.removeEventListener('open-url', guard);
+	return JSON.stringify({ prevented: ev.defaultPrevented, calls, seen });
+}
+// The settings window's title when the settings have a window of their own (Obsidian 1.13 and later), else null.
+const settingsWindow = () => { const d = window.app.setting.activeTab?.containerEl.doc; return d && d !== document ? d.title : null; };
+const SITE_OPENED = JSON.stringify({ prevented: true, calls: [['https://p3n.si/', '_external']], seen: [] });
+const SITE_LINK = 'p3n.si ↗|https://p3n.si/|Open p3n.si in your browser|↗';
 
 // ---- the run ---------------------------------------------------------------------------------------
 
@@ -383,6 +431,27 @@ async function main() {
 			await cdp.ev(() => document.querySelector('.p3n-view li.p3n-hit').click());
 			const sel = await cdp.ev(() => window.__ed()?.getSelection());
 			assert(sel === AI_TEXT.split('. ')[0] + '.', `selected "${sel}"`);
+		});
+
+		await check('footer: p3n.si after the quota line, styled like Add API key, kept when the line changes; opens in the browser', async () => {
+			assert(await cdp.ev(siteLink, 'view') === SITE_LINK, await cdp.ev(siteLink, 'view'));
+			const where = await cdp.ev(() => {
+				const f = document.querySelector('.p3n-view .p3n-footer');
+				const quota = f.firstElementChild;
+				const a = f.querySelector('a.p3n-site');
+				const key = [...f.querySelectorAll('button')].find((b) => b.textContent === 'Add API key');
+				window.__site = a;
+				const css = (el) => { const s = getComputedStyle(el); return `${s.color} ${s.fontSize} ${s.textDecorationLine}`; };
+				return { after: !quota.contains(a) && !!(quota.compareDocumentPosition(a) & Node.DOCUMENT_POSITION_FOLLOWING), beforeKey: !!key && !!(a.compareDocumentPosition(key) & Node.DOCUMENT_POSITION_FOLLOWING), css: css(a), keyCss: key && css(key) };
+			});
+			assert(where.after && where.beforeKey, JSON.stringify(where));
+			assert(where.css === where.keyCss && where.css.endsWith('underline'), JSON.stringify(where));
+			// The quota line's text is replaced on every answer; the link sits beside it, so it stays.
+			await cdp.ev(() => { window.__plugin().free = 3; window.__plugin().refreshViews(); });
+			await cdp.waitFor(() => document.querySelector('.p3n-view .p3n-footer')?.firstElementChild?.textContent === '3 free calls left this hour without a key.');
+			assert(await cdp.ev(() => window.__site.isConnected && document.querySelector('.p3n-view .p3n-footer a.p3n-site') === window.__site), 'the link was replaced or dropped');
+			const opened = await cdp.ev(clickSite, 'view');
+			assert(opened === SITE_OPENED, opened);
 		});
 
 		await check('rewrite: headline, scores, rewrite without the trailing line break', async () => {
@@ -745,6 +814,7 @@ async function main() {
 			await cdp.ev(() => window.__plugin().refreshViews());
 			foot = await cdp.waitFor(() => { const t = document.querySelector('.p3n-view .p3n-footer')?.innerText ?? ''; return t.includes('Balance') && t; });
 			assert(foot.includes('Balance $1.50 · key laptop'), foot);
+			assert(await cdp.ev(siteLink, 'view') === SITE_LINK, 'no p3n.si link with a key');
 			await cdp.ev(selectInNote, AI_TEXT);
 			await run(cdp, 'check');
 			await cdp.waitFor(idle);
@@ -756,10 +826,13 @@ async function main() {
 			await cdp.ev((id) => { window.app.setting.open(); window.app.setting.openTabById(id); }, ID);
 			// The tab's own element: the settings window's layout differs between Obsidian versions.
 			const t = await cdp.waitFor((id) => { const c = window.app.setting.activeTab?.containerEl; return window.app.setting.activeTab?.id === id && c?.innerText.includes('What p3n sends') && c.innerText; }, [ID]);
-			for (const want of ['API key', '10 calls an hour', "keychain on this device, not in your notes or the plugin's data.json", 'Privacy', 'What p3n sends', 'It goes to api.p3n.si and nowhere else.']) assert(t.includes(want), `missing "${want}"`);
+			for (const want of ['API key', '10 calls an hour', "keychain on this device, not in your notes or the plugin's data.json", 'Pricing, your balance and the docs: p3n.si ↗', 'Privacy', 'What p3n sends', 'It goes to api.p3n.si and nowhere else.']) assert(t.includes(want), `missing "${want}"`);
+			assert(await cdp.ev(siteLink, 'settings') === SITE_LINK, await cdp.ev(siteLink, 'settings'));
+			const opened = await cdp.ev(clickSite, 'settings');
+			assert(opened === SITE_OPENED, opened);
 			const status = await cdp.waitFor(() => window.app.setting.activeTab.containerEl.querySelector('.p3n-key-status')?.innerText);
 			assert(/doesn't accept this key|Checking/.test(status), status);
-			await cdp.shot('settings');
+			await cdp.shot('settings', { title: await cdp.ev(settingsWindow) });
 			await cdp.ev(() => [...window.app.setting.activeTab.containerEl.querySelectorAll('button')].find((b) => b.textContent === 'Remove key').click());
 			const after = await cdp.waitFor(() => window.app.setting.activeTab.containerEl.querySelector('.p3n-key-status')?.innerText.startsWith('Key removed') && window.app.setting.activeTab.containerEl.querySelector('.p3n-key-status').innerText);
 			assert(after.startsWith('Key removed. p3n still works without one'), after);
@@ -781,10 +854,26 @@ async function main() {
 			await cdp.waitFor(idle);
 			assert(await cdp.ev(() => document.body.classList.contains('theme-dark')), 'not dark');
 			await cdp.shot('rewrite-dark');
+			// The footer up close, from the line under the result: the quota line, p3n.si and Add API key.
+			const foot = await cdp.ev(() => {
+				const v = document.querySelector('.p3n-view').getBoundingClientRect();
+				const meta = document.querySelector('.p3n-view .p3n-result-in > p:last-child').getBoundingClientRect();
+				const f = document.querySelector('.p3n-view .p3n-footer').getBoundingClientRect();
+				return { x: v.x, y: meta.y - 10, width: v.width, height: f.bottom - meta.y + 30, scale: 2 };
+			});
+			await cdp.shot('footer-dark', { clip: foot });
 			await cdp.ev(selectInNote, AI_TEXT);
 			await run(cdp, 'check');
 			await cdp.waitFor(idle);
 			await cdp.shot('check-dark');
+			await cdp.ev((id) => { window.app.setting.open(); window.app.setting.openTabById(id); }, ID);
+			await cdp.waitFor((id) => window.app.setting.activeTab?.id === id && window.app.setting.activeTab.containerEl.innerText.includes('p3n.si'), [ID]);
+			assert(await cdp.ev(siteLink, 'settings') === SITE_LINK, 'no p3n.si line in the settings');
+			await cdp.shot('settings-dark', { title: await cdp.ev(settingsWindow) });
+			await cdp.ev(() => window.app.setting.close());
+			// In Obsidian 1.12 the settings close with an animation; changing the theme during it made the phone
+			// layout's reload, further on, fail to switch back.
+			await cdp.waitFor(() => !document.querySelector('.modal.mod-settings'));
 			await cdp.ev(() => window.app.changeTheme('moonstone'));
 		// The test note's editor. Obsidian 1.14 has no workspace.activeEditor while the p3n view is the active leaf.
 		await cdp.ev(() => { window.__ed = () => window.app.workspace.getLeavesOfType('markdown').find((l) => l.view.file?.path === 'Team update.md')?.view.editor; });
@@ -856,6 +945,7 @@ async function main() {
 				await run(cdp, 'check');
 				await cdp.waitFor(idle);
 				assert((await cdp.ev(resultText)).includes('Likely AI-written'), 'no result');
+				assert(await cdp.ev(siteLink, 'view') === SITE_LINK, 'no p3n.si link in the phone layout');
 				await cdp.shot('mobile-check');
 				await cdp.ev(selectInNote, SHORT);
 				await sleep(800); // going back to the note closes the drawer, with an animation

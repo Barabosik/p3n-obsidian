@@ -13,7 +13,7 @@ npm test        # unit tests: the API client, the result copy, the key check, se
 
 ## In a real Obsidian
 
-`scripts/e2e.mjs` runs the plugin in the Obsidian desktop app you have installed, over the DevTools protocol: commands, the right-click menu, the results, Replace selection and a real Ctrl+Z, Copy (with a stand-in clipboard), errors, picking a key, the settings tab, dark theme, a pop-out window, and Obsidian's phone layout. It starts Obsidian with its own profile and a throwaway vault under `.e2e/`, so your vaults and settings aren't touched. API calls are answered in the page with canned runs; nothing reaches api.p3n.si.
+`scripts/e2e.mjs` runs the plugin in the Obsidian desktop app you have installed, over the DevTools protocol: commands, the right-click menu, the results, Replace selection and a real Ctrl+Z, Copy (with a stand-in clipboard), the p3n.si link (with a stand-in for the browser), errors, picking a key, the settings tab, dark theme, a pop-out window, and Obsidian's phone layout. It starts Obsidian with its own profile and a throwaway vault under `.e2e/`, so your vaults and settings aren't touched. API calls are answered in the page with canned runs; nothing reaches api.p3n.si.
 
 ```bash
 npm run build && node scripts/e2e.mjs
