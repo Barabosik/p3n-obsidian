@@ -2,6 +2,12 @@
 
 What changed in each version of p3n for Obsidian. Downloads are on the [releases page](https://github.com/Barabosik/p3n-obsidian/releases).
 
+## 0.1.5
+
+- The p3n view's footer links to [p3n.si](https://p3n.si/), next to the line with your free calls or balance, with or without a key.
+- **Settings → p3n** has the same link: "Pricing, your balance and the docs: p3n.si ↗".
+- Both open p3n.si in your browser, also when Obsidian's Web viewer is on.
+
 ## 0.1.4
 
 - **Rewrite** needs a sentence of eight words or more, and now says so before it sends anything, as **Check for AI** already did for text under 40 characters.
