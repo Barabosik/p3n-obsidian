@@ -7,6 +7,7 @@ What changed in each version of p3n for Obsidian. Downloads are on the [releases
 - The p3n view's footer links to [p3n.si](https://p3n.si/), next to the line with your free calls or balance, with or without a key.
 - **Settings → p3n** has the same link: "Pricing, your balance and the docs: p3n.si ↗".
 - Both open p3n.si in your browser, also when Obsidian's Web viewer is on.
+- After **Check for AI**, the sentences it lists are highlighted in your selection, with the reason on hover; pattern hits get a lighter, dotted mark. The highlights go with your next check or rewrite, any edit to the note, the **Clear highlights** button under the result, or the new **p3n: Clear highlights** command.
 
 ## 0.1.4
 
