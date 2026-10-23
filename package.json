@@ -1,6 +1,6 @@
 {
 	"name": "p3n-obsidian",
-	"version": "0.1.4",
+	"version": "0.1.5",
 	"description": "Select text, see if it reads as AI-written, or rewrite it in place, with the p3n API.",
 	"main": "main.js",
 	"type": "module",

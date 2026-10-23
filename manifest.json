@@ -1,7 +1,7 @@
 {
 	"id": "ai-pen",
 	"name": "p3n",
-	"version": "0.1.4",
+	"version": "0.1.5",
 	"minAppVersion": "1.11.4",
 	"description": "Select text, see if it reads as AI-written, or rewrite it in place, with the p3n API.",
 	"author": "Nikita Andreiev",
